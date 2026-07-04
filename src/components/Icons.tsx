@@ -12,7 +12,7 @@ const svg = (children: ReactNode, size: number) => (
 
 export type IconName =
   | 'dashboard' | 'polos' | 'professores' | 'alunos' | 'responsaveis'
-  | 'mapeamento' | 'cronograma' | 'materiais' | 'historico'
+  | 'cronograma' | 'materiais' | 'historico'
   | 'sino' | 'sair' | 'menu'
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
@@ -46,11 +46,6 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
         <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
         <path d="M16 5.5a3 3 0 0 1 0 5.8" />
         <path d="M17 14.2a5.5 5.5 0 0 1 3.5 5" />
-      </>, size)
-    case 'mapeamento':
-      return svg(<>
-        <path d="m9 4-6 2.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4Z" />
-        <path d="M9 4v13M15 6.5v13" />
       </>, size)
     case 'cronograma':
       return svg(<>

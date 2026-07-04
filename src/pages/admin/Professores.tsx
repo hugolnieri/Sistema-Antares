@@ -178,8 +178,26 @@ export default function Professores() {
     },
   ]
 
+  const polosComProfessor = new Set(
+    professores.filter((p) => p.ativo).flatMap((p) => (p.professor_polos ?? []).map((pp) => pp.polo_id)),
+  )
+  const polosSemProfessor = polos.filter((p) => !polosComProfessor.has(p.id))
+
   return (
     <>
+      {!loading && polosSemProfessor.length > 0 && (
+        <div className="card mb-4 border-l-4 !border-l-[var(--c-amber-fg)]">
+          <p className="text-sm font-semibold">
+            ⚠️ {polosSemProfessor.length === 1
+              ? '1 polo ainda não possui professor vinculado:'
+              : `${polosSemProfessor.length} polos ainda não possuem professor vinculado:`}
+          </p>
+          <p className="mt-1 text-sm text-[var(--c-text-soft)]">
+            {polosSemProfessor.map((p) => p.nome).join(', ')}
+          </p>
+        </div>
+      )}
+
       <DataTable
         columns={colunas}
         rows={professores}

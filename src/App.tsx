@@ -9,7 +9,6 @@ import Polos from './pages/admin/Polos'
 import Professores from './pages/admin/Professores'
 import Alunos from './pages/admin/Alunos'
 import Responsaveis from './pages/admin/Responsaveis'
-import Mapeamento from './pages/admin/Mapeamento'
 import Cronograma from './pages/admin/Cronograma'
 import Materiais from './pages/admin/Materiais'
 import Historico from './pages/admin/Historico'
@@ -41,7 +40,6 @@ export default function App() {
             <Route path="professores" element={<Professores />} />
             <Route path="alunos" element={<Alunos />} />
             <Route path="responsaveis" element={<Responsaveis />} />
-            <Route path="mapeamento" element={<Mapeamento />} />
             <Route path="cronograma" element={<Cronograma />} />
             <Route path="materiais" element={<Materiais />} />
             <Route path="historico" element={<Historico />} />

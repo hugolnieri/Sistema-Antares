@@ -6,11 +6,20 @@ import { Drawer, Field, Modal, ConfirmModal, StatusBadge } from '../../component
 import { PoloMap } from '../../components/PoloMap'
 import { useToast } from '../../components/Toast'
 import { gerarSlug, linkDoPolo } from '../../lib/format'
+import { enderecoBuscavel, geocodificarEndereco } from '../../lib/geocode'
 import type { Polo } from '../../lib/types'
 
+const UFS = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+  'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+  'SP', 'SE', 'TO',
+]
+
 const FORM_VAZIO = {
-  nome: '', slug: '', endereco: '', responsavel: '',
-  contato: '', pix: '', observacoes: '', status: 'ativo' as 'ativo' | 'inativo',
+  nome: '', slug: '',
+  cep: '', logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', estado: '',
+  responsavel: '', contato: '', pix: '', observacoes: '',
+  status: 'ativo' as 'ativo' | 'inativo',
   latitude: '', longitude: '',
 }
 
@@ -19,7 +28,9 @@ export default function Polos() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const [visao, setVisao] = useState<'lista' | 'mapa'>('lista')
-  const [buscandoCoords, setBuscandoCoords] = useState(false)
+  const [statusLocalizacao, setStatusLocalizacao] = useState<
+    'ocioso' | 'buscando' | 'encontrado' | 'nao-encontrado'
+  >('ocioso')
   const toast = useToast()
 
   // Drawer criar/editar
@@ -43,7 +54,7 @@ export default function Polos() {
     setErro(null)
     const { data, error } = await supabase
       .from('polos')
-      .select('id, nome, slug, endereco, responsavel, contato, pix, observacoes, latitude, longitude, token_version, status, created_at')
+      .select('id, nome, slug, cep, logradouro, numero, complemento, bairro, cidade, estado, responsavel, contato, pix, observacoes, latitude, longitude, token_version, status, created_at')
       .order('nome')
     if (error) setErro('Não foi possível carregar os polos.')
     else setPolos((data ?? []) as Polo[])
@@ -57,13 +68,17 @@ export default function Polos() {
     setForm(FORM_VAZIO)
     setFormErros({})
     setSlugEditado(false)
+    setStatusLocalizacao('ocioso')
     setDrawerAberto(true)
   }
 
   const abrirEdicao = (p: Polo) => {
     setEditando(p)
     setForm({
-      nome: p.nome, slug: p.slug, endereco: p.endereco ?? '',
+      nome: p.nome, slug: p.slug,
+      cep: p.cep ?? '', logradouro: p.logradouro ?? '', numero: p.numero ?? '',
+      complemento: p.complemento ?? '', bairro: p.bairro ?? '',
+      cidade: p.cidade ?? '', estado: p.estado ?? '',
       responsavel: p.responsavel ?? '', contato: p.contato ?? '',
       pix: p.pix ?? '', observacoes: p.observacoes ?? '', status: p.status,
       latitude: p.latitude != null ? String(p.latitude) : '',
@@ -71,6 +86,7 @@ export default function Polos() {
     })
     setFormErros({})
     setSlugEditado(true)
+    setStatusLocalizacao('ocioso')
     setDrawerAberto(true)
   }
 
@@ -95,39 +111,50 @@ export default function Polos() {
     return Object.keys(erros).length === 0
   }
 
-  // Busca gratuita de coordenadas pelo endereço (Nominatim/OpenStreetMap)
-  const buscarCoords = async () => {
-    if (!form.endereco.trim()) {
-      toast.error('Preencha o endereço primeiro.')
-      return
-    }
-    setBuscandoCoords(true)
-    try {
-      const r = await fetch(
-        'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=' +
-        encodeURIComponent(form.endereco),
-      )
-      const d = await r.json()
-      if (!Array.isArray(d) || !d.length) {
-        toast.error('Endereço não encontrado no mapa. Preencha as coordenadas manualmente.')
-        return
+  // Busca automática de coordenadas assim que Logradouro + Cidade + UF
+  // estiverem preenchidos. Não sobrescreve latitude/longitude já definidos
+  // (à mão ou por uma busca anterior) — só entra em ação enquanto vazios.
+  useEffect(() => {
+    if (!drawerAberto) return
+    if (form.latitude.trim() || form.longitude.trim()) return
+    if (!enderecoBuscavel(form)) { setStatusLocalizacao('ocioso'); return }
+
+    const controller = new AbortController()
+    setStatusLocalizacao('buscando')
+    const timer = setTimeout(async () => {
+      try {
+        const achado = await geocodificarEndereco(form, controller.signal)
+        if (achado) {
+          setForm((f) => ({ ...f, latitude: achado.lat, longitude: achado.lon }))
+          setFormErros((e) => ({ ...e, coords: '' }))
+          setStatusLocalizacao('encontrado')
+        } else {
+          setStatusLocalizacao('nao-encontrado')
+        }
+      } catch {
+        if (!controller.signal.aborted) setStatusLocalizacao('nao-encontrado')
       }
-      setForm((f) => ({ ...f, latitude: d[0].lat, longitude: d[0].lon }))
-      setFormErros((e) => ({ ...e, coords: '' }))
-      toast.success('Coordenadas preenchidas a partir do endereço.')
-    } catch {
-      toast.error('Erro ao consultar o mapa. Tente novamente.')
-    } finally {
-      setBuscandoCoords(false)
-    }
-  }
+    }, 800)
+
+    return () => { clearTimeout(timer); controller.abort() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    drawerAberto, form.cep, form.logradouro, form.numero,
+    form.cidade, form.estado, form.latitude, form.longitude,
+  ])
 
   const salvar = async () => {
     if (!validar()) return
     setSalvando(true)
     const payload = {
       nome: form.nome.trim(), slug: form.slug.trim(),
-      endereco: form.endereco.trim() || null,
+      cep: form.cep.trim() || null,
+      logradouro: form.logradouro.trim() || null,
+      numero: form.numero.trim() || null,
+      complemento: form.complemento.trim() || null,
+      bairro: form.bairro.trim() || null,
+      cidade: form.cidade.trim() || null,
+      estado: form.estado.trim() || null,
       responsavel: form.responsavel.trim() || null,
       contato: form.contato.trim() || null,
       pix: form.pix.trim() || null,
@@ -301,17 +328,69 @@ export default function Polos() {
               <br />O link é estável — trocar a senha não muda o link.
             </p>
           )}
-          <Field label="Endereço / local de atendimento">
-            <input value={form.endereco}
-                   onChange={(e) => setForm((f) => ({ ...f, endereco: e.target.value }))} />
-          </Field>
+          <div className="rounded-lg border border-[var(--c-border)] p-3">
+            <p className="mb-3 text-sm font-semibold">📍 Endereço</p>
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="CEP">
+                  <input value={form.cep} placeholder="00000-000"
+                         onChange={(e) => setForm((f) => ({ ...f, cep: e.target.value }))} />
+                </Field>
+                <Field label="Número">
+                  <input value={form.numero} placeholder="Ex.: 205 ou s/n"
+                         onChange={(e) => setForm((f) => ({ ...f, numero: e.target.value }))} />
+                </Field>
+              </div>
+              <Field label="Logradouro (rua / avenida)">
+                <input value={form.logradouro} placeholder="Ex.: Av. Brasil"
+                       onChange={(e) => setForm((f) => ({ ...f, logradouro: e.target.value }))} />
+              </Field>
+              <Field label="Complemento">
+                <input value={form.complemento} placeholder="Sala, bloco, referência…"
+                       onChange={(e) => setForm((f) => ({ ...f, complemento: e.target.value }))} />
+              </Field>
+              <Field label="Bairro">
+                <input value={form.bairro}
+                       onChange={(e) => setForm((f) => ({ ...f, bairro: e.target.value }))} />
+              </Field>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <Field label="Cidade">
+                  <input value={form.cidade}
+                         onChange={(e) => setForm((f) => ({ ...f, cidade: e.target.value }))} />
+                </Field>
+                <Field label="UF">
+                  <select value={form.estado} className="!w-20"
+                          onChange={(e) => setForm((f) => ({ ...f, estado: e.target.value }))}>
+                    <option value="">—</option>
+                    {UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+                  </select>
+                </Field>
+              </div>
+            </div>
+          </div>
 
           <div className="rounded-lg border border-[var(--c-border)] p-3">
-            <p className="mb-2 text-sm font-semibold">📍 Localização no mapa</p>
-            <button className="btn btn-ghost mb-3 w-full !py-2 text-sm"
-                    onClick={buscarCoords} disabled={buscandoCoords}>
-              {buscandoCoords ? 'Buscando…' : '🔎 Buscar coordenadas pelo endereço'}
-            </button>
+            <p className="mb-2 text-sm font-semibold">🗺️ Localização no mapa</p>
+            <p className="mb-3 text-xs text-[var(--c-text-soft)]">
+              Preenchendo Logradouro, Cidade e UF acima, o sistema localiza as
+              coordenadas automaticamente. Se preferir, edite manualmente abaixo.
+            </p>
+            {statusLocalizacao === 'buscando' && (
+              <p className="mb-3 text-xs font-semibold text-[var(--c-blue-fg)]">
+                🔎 Localizando endereço no mapa…
+              </p>
+            )}
+            {statusLocalizacao === 'encontrado' && (
+              <p className="mb-3 text-xs font-semibold text-[var(--c-green-fg)]">
+                ✓ Localização encontrada automaticamente.
+              </p>
+            )}
+            {statusLocalizacao === 'nao-encontrado' && (
+              <p className="mb-3 text-xs font-semibold text-[var(--c-amber-fg)]">
+                ⚠️ Endereço não encontrado no mapa. Preencha as coordenadas manualmente
+                abaixo (ex.: copiando do Google Maps).
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Latitude">
                 <input value={form.latitude} placeholder="-23.5505"

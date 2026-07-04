@@ -89,7 +89,8 @@ export const mockPoloApi = {
     token: string,
     dados: {
       numeroAula: number
-      professorNome: string
+      professoresNomes: string[]
+      dataAula: string
       observacoes?: string
       relatorio?: string
       presencas: { alunoId: string; presente: boolean }[]
@@ -104,9 +105,13 @@ export const mockPoloApi = {
     if (!polo || polo.status !== 'ativo' || String(polo.token_version) !== tv) {
       throw new Error('Sessão expirada. Digite a senha novamente.')
     }
-    if (!dados.professorNome?.trim()) throw new Error('Informe o nome do professor')
+    const professores = (dados.professoresNomes ?? []).map((n) => n.trim()).filter(Boolean)
+    if (!professores.length) throw new Error('Informe ao menos um professor')
     if (!dados.numeroAula || dados.numeroAula < 1 || dados.numeroAula > 18) {
       throw new Error('Aula inválida')
+    }
+    if (!dados.dataAula || !/^\d{4}-\d{2}-\d{2}$/.test(dados.dataAula)) {
+      throw new Error('Informe a data da aula')
     }
     if (fotos.length > MAX_FOTOS) throw new Error(`Máximo de ${MAX_FOTOS} fotos`)
     for (const f of fotos) {
@@ -119,13 +124,15 @@ export const mockPoloApi = {
     if (!presencas.length) throw new Error('Alunos inválidos para este polo')
 
     const agora = new Date().toISOString()
+    const dataHora = new Date(`${dados.dataAula}T12:00:00`).toISOString()
     const historicoId = uuid()
     db.historico_aulas.push({
       id: historicoId,
       polo_id: polo.id,
       numero_aula: dados.numeroAula,
-      professor_nome: dados.professorNome.trim(),
-      data_hora: agora,
+      professor_nome: professores.join(', '),
+      professores_nomes: professores,
+      data_hora: dataHora,
       observacoes: dados.observacoes || null,
       relatorio: dados.relatorio || null,
       criado_por: 'professor',

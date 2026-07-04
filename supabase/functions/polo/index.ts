@@ -218,7 +218,9 @@ async function acaoChamada(form: FormData) {
 
   let dados: {
     numeroAula: number;
-    professorNome: string;
+    professoresNomes?: string[];
+    professorNome?: string; // compatibilidade
+    dataAula?: string;      // YYYY-MM-DD
     observacoes?: string;
     relatorio?: string;
     presencas: { alunoId: string; presente: boolean }[];
@@ -230,11 +232,22 @@ async function acaoChamada(form: FormData) {
     return json({ error: "Dados inválidos" }, 400);
   }
 
-  if (!dados.professorNome?.trim()) return json({ error: "Informe o nome do professor" }, 400);
+  // Lista de professores (mínimo 1 obrigatório). Aceita o campo antigo
+  // professorNome como fallback.
+  const professores = (dados.professoresNomes ?? (dados.professorNome ? [dados.professorNome] : []))
+    .map((n) => String(n).trim()).filter(Boolean);
+  if (!professores.length) return json({ error: "Informe ao menos um professor" }, 400);
+
   if (!dados.numeroAula || dados.numeroAula < 1 || dados.numeroAula > 18) {
     return json({ error: "Aula inválida" }, 400);
   }
+  if (!dados.dataAula || !/^\d{4}-\d{2}-\d{2}$/.test(dados.dataAula)) {
+    return json({ error: "Informe a data da aula" }, 400);
+  }
   if (!dados.presencas?.length) return json({ error: "Nenhum aluno na chamada" }, 400);
+
+  // Data da aula ao meio-dia (evita virar o dia por fuso horário)
+  const dataHora = new Date(`${dados.dataAula}T12:00:00`).toISOString();
 
   // Presenças só de alunos que realmente pertencem a este polo
   const { data: alunosPolo } = await supabase
@@ -254,7 +267,9 @@ async function acaoChamada(form: FormData) {
     .insert({
       polo_id: polo.id,
       numero_aula: dados.numeroAula,
-      professor_nome: dados.professorNome.trim(),
+      professor_nome: professores.join(", "),
+      professores_nomes: professores,
+      data_hora: dataHora,
       observacoes: dados.observacoes || null,
       relatorio: dados.relatorio || null,
       criado_por: "professor",

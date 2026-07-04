@@ -15,8 +15,11 @@ export default function Chamada() {
   const navigate = useNavigate()
   const toast = useToast()
 
+  const hoje = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD no fuso local
   const [numeroAula, setNumeroAula] = useState(0)
-  const [professorNome, setProfessorNome] = useState('')
+  const [dataAula, setDataAula] = useState(hoje)
+  // Padrão: 2 campos de professor (só o 1º é obrigatório)
+  const [professores, setProfessores] = useState<string[]>(['', ''])
   const [presencas, setPresencas] = useState<Record<string, boolean>>({})
   const [observacoes, setObservacoes] = useState('')
   const [relatorio, setRelatorio] = useState('')
@@ -30,6 +33,11 @@ export default function Chamada() {
 
   const marcar = (alunoId: string, presente: boolean) =>
     setPresencas((p) => ({ ...p, [alunoId]: presente }))
+
+  const mudarProfessor = (i: number, valor: string) =>
+    setProfessores((ps) => ps.map((p, j) => (j === i ? valor : p)))
+
+  const professoresPreenchidos = professores.map((p) => p.trim()).filter(Boolean)
 
   const adicionarFotos = (lista: FileList | null) => {
     if (!lista) return
@@ -59,7 +67,8 @@ export default function Chamada() {
   const salvar = async () => {
     const novosErros: Record<string, string> = {}
     if (!numeroAula) novosErros.aula = 'Selecione a aula.'
-    if (!professorNome.trim()) novosErros.professor = 'Informe seu nome.'
+    if (!dataAula) novosErros.data = 'Informe a data da aula.'
+    if (professoresPreenchidos.length === 0) novosErros.professor = 'Informe ao menos um professor.'
     const marcados = Object.keys(presencas)
     if (marcados.length === 0) novosErros.presencas = 'Marque a presença de pelo menos um aluno.'
     setErros(novosErros)
@@ -77,7 +86,8 @@ export default function Chamada() {
       }))
       const resultado = await poloApi.salvarChamada(token, {
         numeroAula,
-        professorNome: professorNome.trim(),
+        professoresNomes: professoresPreenchidos,
+        dataAula,
         observacoes: observacoes.trim() || undefined,
         relatorio: relatorio.trim() || undefined,
         presencas: lista,
@@ -107,24 +117,60 @@ export default function Chamada() {
   const marcadosCount = Object.keys(presencas).length
 
   return (
-    <div className="flex flex-col gap-4 pb-28">
-      {/* Aula e professor */}
+    <div className="flex flex-col gap-4 pb-6">
+      {/* Aula, data e professores */}
       <div className="card flex flex-col gap-4">
-        <Field label="Qual aula é hoje?" required error={erros.aula}>
-          <select value={numeroAula} aria-invalid={!!erros.aula}
-                  className="!py-3 !text-lg"
-                  onChange={(e) => setNumeroAula(Number(e.target.value))}>
-            <option value={0}>Selecione a aula…</option>
-            {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n}>Aula {n}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Seu nome (professor)" required error={erros.professor}>
-          <input value={professorNome} aria-invalid={!!erros.professor}
-                 className="!py-3 !text-lg" placeholder="Ex.: Maria Souza"
-                 onChange={(e) => setProfessorNome(e.target.value)} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Aula" required error={erros.aula}>
+            <select value={numeroAula} aria-invalid={!!erros.aula}
+                    className="!py-3 !text-lg"
+                    onChange={(e) => setNumeroAula(Number(e.target.value))}>
+              <option value={0}>Selecione…</option>
+              {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>Aula {n}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Data da aula" required error={erros.data}>
+            <input type="date" value={dataAula} aria-invalid={!!erros.data}
+                   className="!py-3 !text-lg"
+                   onChange={(e) => setDataAula(e.target.value)} />
+          </Field>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold">
+            Professores <span className="text-red-600">*</span>
+          </label>
+          {professores.map((nome, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                value={nome}
+                aria-invalid={i === 0 && !!erros.professor}
+                className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-3 text-lg"
+                style={i === 0 && erros.professor ? { borderColor: 'var(--c-danger)' } : undefined}
+                placeholder={i === 0 ? 'Professor principal (obrigatório)' : 'Professor (opcional)'}
+                onChange={(e) => mudarProfessor(i, e.target.value)}
+              />
+              {professores.length > 1 && (
+                <button
+                  className="btn btn-ghost !px-3 !py-2 text-[var(--c-danger)]"
+                  onClick={() => setProfessores((ps) => ps.filter((_, j) => j !== i))}
+                  aria-label={`Remover professor ${i + 1}`}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          {erros.professor && <p className="field-error">{erros.professor}</p>}
+          <button
+            className="btn btn-ghost self-start !py-2 text-sm"
+            onClick={() => setProfessores((ps) => [...ps, ''])}
+          >
+            + Adicionar professor
+          </button>
+        </div>
       </div>
 
       {/* Lista de alunos */}
@@ -288,14 +334,13 @@ export default function Chamada() {
         )}
       </div>
 
-      {/* Barra fixa de salvar */}
-      <div className="fixed bottom-0 left-1/2 z-30 w-full max-w-2xl -translate-x-1/2 border-t border-[var(--c-border)] bg-white p-4">
-        <button className="btn btn-primary btn-lg w-full" onClick={salvar} disabled={salvando}>
-          {salvando
-            ? 'Salvando chamada…'
-            : `Salvar chamada${marcadosCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
-        </button>
-      </div>
+      {/* Botão de salvar — logo abaixo da chamada */}
+      <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
+              onClick={salvar} disabled={salvando}>
+        {salvando
+          ? 'Salvando chamada…'
+          : `Salvar chamada${marcadosCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
+      </button>
 
       {/* Modal de responsáveis (somente leitura) */}
       <Modal

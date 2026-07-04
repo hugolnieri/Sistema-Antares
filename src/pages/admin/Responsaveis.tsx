@@ -114,8 +114,10 @@ export default function Responsaveis() {
         loading={loading}
         error={erro}
         onRetry={carregar}
-        searchValue={(r) => `${r.nome} ${r.telefone ?? ''}`}
-        searchPlaceholder="Buscar responsável…"
+        searchValue={(r) =>
+          `${r.nome} ${r.telefone ?? ''} ` +
+          (r.aluno_responsaveis ?? []).map((ar) => ar.alunos?.nome ?? '').join(' ')}
+        searchPlaceholder="Buscar por responsável ou nome do aluno…"
         toolbar={<button className="btn btn-primary" onClick={abrirNovo}>+ Novo responsável</button>}
         empty={{
           icon: '👪', title: 'Nenhum responsável cadastrado',

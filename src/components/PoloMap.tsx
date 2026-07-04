@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { enderecoCompleto } from '../lib/format'
 import type { Polo } from '../lib/types'
 
 const esc = (s: string | null | undefined) =>
@@ -39,12 +40,13 @@ export function PoloMap({ polos }: { polos: Polo[] }) {
 
     const comCoord = polos.filter((p) => p.latitude != null && p.longitude != null)
     for (const p of comCoord) {
+      const endereco = enderecoCompleto(p)
       L.marker([p.latitude!, p.longitude!], { icon: pin(p.status === 'ativo') })
         .addTo(map)
         .bindPopup(
           `<div style="min-width:180px">
             <strong>${esc(p.nome)}</strong><br/>
-            ${p.endereco ? `${esc(p.endereco)}<br/>` : ''}
+            ${endereco ? `${esc(endereco)}<br/>` : ''}
             ${p.responsavel ? `Responsável: ${esc(p.responsavel)}<br/>` : ''}
             ${p.contato ? `${esc(p.contato)}<br/>` : ''}
             <span style="color:${p.status === 'ativo' ? '#147a3d' : '#5c626e'};font-weight:600">

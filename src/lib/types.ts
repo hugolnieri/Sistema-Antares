@@ -2,7 +2,13 @@ export interface Polo {
   id: string
   nome: string
   slug: string
-  endereco: string | null
+  cep: string | null
+  logradouro: string | null
+  numero: string | null
+  complemento: string | null
+  bairro: string | null
+  cidade: string | null
+  estado: string | null
   responsavel: string | null
   contato: string | null
   pix: string | null
@@ -92,6 +98,7 @@ export interface HistoricoAula {
   polo_id: string
   numero_aula: number
   professor_nome: string
+  professores_nomes: string[]
   data_hora: string
   observacoes: string | null
   relatorio: string | null
@@ -100,6 +107,19 @@ export interface HistoricoAula {
   polos?: { nome: string } | null
   presencas?: Presenca[]
   fotos_aula?: FotoAula[]
+}
+
+export type EventoTipo = 'preparo' | 'reuniao' | 'entrega' | 'geral'
+
+export interface Evento {
+  id: string
+  titulo: string
+  data: string
+  tipo: EventoTipo
+  polo_id: string | null
+  descricao: string | null
+  created_at: string
+  polos?: { nome: string } | null
 }
 
 export interface Presenca {

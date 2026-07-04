@@ -33,7 +33,8 @@ const realPoloApi = {
     token: string,
     dados: {
       numeroAula: number
-      professorNome: string
+      professoresNomes: string[]
+      dataAula: string
       observacoes?: string
       relatorio?: string
       presencas: { alunoId: string; presente: boolean }[]

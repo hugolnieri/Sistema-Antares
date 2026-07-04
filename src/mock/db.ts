@@ -15,6 +15,7 @@ export interface MockDB {
   presencas: any[]
   fotos_aula: any[]
   alunos_sugeridos: any[]
+  eventos: any[]
 }
 
 const KEY = 'antares-mock-db'
@@ -45,10 +46,10 @@ function seed(): MockDB {
 
   return {
     polos: [
-      { id: p1, nome: 'Jardim Santa Maria', slug: 'jardim-santa-maria', endereco: 'Av. Paulista, 1578 - Bela Vista, São Paulo - SP', responsavel: 'Carla Mendes', contato: '(11) 98888-1111', pix: 'pix-santamaria@antares.com', observacoes: 'Aulas às terças e quintas.', latitude: -23.5614, longitude: -46.6559, senha: '1234', token_version: 1, status: 'ativo', created_at: diasAtras(90) },
-      { id: p2, nome: 'Centro', slug: 'centro', endereco: 'Praça da Sé, s/n - Sé, São Paulo - SP', responsavel: 'Roberto Dias', contato: '(11) 97777-2222', pix: null, observacoes: null, latitude: -23.5503, longitude: -46.6339, senha: '1234', token_version: 1, status: 'ativo', created_at: diasAtras(80) },
-      { id: p3, nome: 'Vila Nova', slug: 'vila-nova', endereco: 'Av. Pedro Álvares Cabral, s/n - Ibirapuera, São Paulo - SP', responsavel: 'Fernanda Rocha', contato: '(11) 96666-3333', pix: 'pix-vilanova@antares.com', observacoes: null, latitude: -23.5874, longitude: -46.6576, senha: '1234', token_version: 1, status: 'ativo', created_at: diasAtras(60) },
-      { id: p4, nome: 'Parque das Flores', slug: 'parque-das-flores', endereco: 'Rua da Cantareira, 306 - Centro, São Paulo - SP', responsavel: null, contato: null, pix: null, observacoes: 'Polo pausado neste semestre.', latitude: -23.5416, longitude: -46.6294, senha: '1234', token_version: 1, status: 'inativo', created_at: diasAtras(120) },
+      { id: p1, nome: 'Jardim Santa Maria', slug: 'jardim-santa-maria', cep: '01310-200', logradouro: 'Av. Paulista', numero: '1578', complemento: null, bairro: 'Bela Vista', cidade: 'São Paulo', estado: 'SP', responsavel: 'Carla Mendes', contato: '(11) 98888-1111', pix: 'pix-santamaria@antares.com', observacoes: 'Aulas às terças e quintas.', latitude: -23.5614, longitude: -46.6559, senha: '1234', token_version: 1, status: 'ativo', created_at: diasAtras(90) },
+      { id: p2, nome: 'Centro', slug: 'centro', cep: '18520-085', logradouro: 'Av. Brasil', numero: '205', complemento: null, bairro: 'Centro', cidade: 'Cerquilho', estado: 'SP', responsavel: 'Roberto Dias', contato: '(11) 97777-2222', pix: null, observacoes: null, latitude: -23.1649435, longitude: -47.7389505, senha: '1234', token_version: 1, status: 'ativo', created_at: diasAtras(80) },
+      { id: p3, nome: 'Vila Nova', slug: 'vila-nova', cep: '04094-050', logradouro: 'Av. Pedro Álvares Cabral', numero: 's/n', complemento: null, bairro: 'Ibirapuera', cidade: 'São Paulo', estado: 'SP', responsavel: 'Fernanda Rocha', contato: '(11) 96666-3333', pix: 'pix-vilanova@antares.com', observacoes: null, latitude: -23.5874, longitude: -46.6576, senha: '1234', token_version: 1, status: 'ativo', created_at: diasAtras(60) },
+      { id: p4, nome: 'Parque das Flores', slug: 'parque-das-flores', cep: '01024-000', logradouro: 'Rua da Cantareira', numero: '306', complemento: null, bairro: 'Centro', cidade: 'São Paulo', estado: 'SP', responsavel: null, contato: null, pix: null, observacoes: 'Polo pausado neste semestre.', latitude: -23.5416, longitude: -46.6294, senha: '1234', token_version: 1, status: 'inativo', created_at: diasAtras(120) },
     ],
     professores: [
       { id: pr1, nome: 'Ana Lima', contato: '(11) 95555-0001', pix: 'ana.lima@pix.com', status: 'disponivel', ativo: true, observacoes: null, created_at: diasAtras(85) },
@@ -111,9 +112,9 @@ function seed(): MockDB {
       { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', created_at: diasAtras(3) },
     ],
     historico_aulas: [
-      { id: h1, polo_id: p1, numero_aula: 3, professor_nome: 'Ana Lima', data_hora: diasAtras(2), observacoes: 'Turma participativa. Davi chegou atrasado.', relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
-      { id: h2, polo_id: p2, numero_aula: 1, professor_nome: 'Bruno Castro', data_hora: diasAtras(5), observacoes: null, relatorio: 'Aula de boas-vindas, apresentação do programa às famílias.', criado_por: 'professor', created_at: diasAtras(5) },
-      { id: h3, polo_id: p1, numero_aula: 2, professor_nome: 'Ana Lima', data_hora: diasAtras(20), observacoes: 'Sem observações.', relatorio: null, criado_por: 'professor', created_at: diasAtras(20) },
+      { id: h1, polo_id: p1, numero_aula: 3, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), observacoes: 'Turma participativa. Davi chegou atrasado.', relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
+      { id: h2, polo_id: p2, numero_aula: 1, professor_nome: 'Bruno Castro', professores_nomes: ['Bruno Castro'], data_hora: diasAtras(5), observacoes: null, relatorio: 'Aula de boas-vindas, apresentação do programa às famílias.', criado_por: 'professor', created_at: diasAtras(5) },
+      { id: h3, polo_id: p1, numero_aula: 2, professor_nome: 'Ana Lima', professores_nomes: ['Ana Lima'], data_hora: diasAtras(20), observacoes: 'Sem observações.', relatorio: null, criado_por: 'professor', created_at: diasAtras(20) },
     ],
     presencas: [
       { id: uuid(), historico_id: h1, aluno_id: al[0], presente: true },
@@ -136,6 +137,11 @@ function seed(): MockDB {
     alunos_sugeridos: [
       { id: uuid(), polo_id: p1, historico_id: h1, nome: 'Sofia Andrade', status: 'pendente', created_at: diasAtras(2) },
     ],
+    eventos: [
+      { id: uuid(), titulo: 'Preparar documentos da Aula 4', data: dataEm(-2), tipo: 'preparo', polo_id: p1, descricao: 'Imprimir listas e material de apoio.', created_at: diasAtras(10) },
+      { id: uuid(), titulo: 'Reunião pedagógica mensal', data: dataEm(5), tipo: 'reuniao', polo_id: null, descricao: 'Alinhamento com todos os professores.', created_at: diasAtras(6) },
+      { id: uuid(), titulo: 'Entrega de relatórios ao coordenador', data: dataEm(10), tipo: 'entrega', polo_id: p2, descricao: null, created_at: diasAtras(4) },
+    ],
   }
 }
 
@@ -146,6 +152,7 @@ export function loadDB(): MockDB {
       const db = JSON.parse(raw) as MockDB
       // Migração: dados salvos antes de novas tabelas existirem
       if (!db.alunos_sugeridos) db.alunos_sugeridos = []
+      if (!db.eventos) db.eventos = []
       return db
     }
   } catch { /* seed abaixo */ }

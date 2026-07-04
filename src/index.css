@@ -86,15 +86,24 @@ body {
 }
 
 /* ============ CAMPOS DE FORMULÁRIO ============ */
-.field { display: flex; flex-direction: column; gap: var(--space-2); }
+/* min-width:0 deixa o campo encolher dentro de grid/flex (evita overflow) */
+.field { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .field label { font-weight: 600; font-size: 13px; }
 .field input, .field select, .field textarea {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   background: var(--c-surface);
   font-size: 14px;
+}
+/* iOS: sem o appearance:none o input[type=date] ganha largura intrínseca
+   fixa e transborda a coluna. Assim ele respeita width:100%. */
+.field input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
 }
 .field input:focus, .field select:focus, .field textarea:focus {
   outline: 2px solid var(--c-primary); outline-offset: -1px;

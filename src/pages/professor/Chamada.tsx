@@ -64,16 +64,22 @@ export default function Chamada() {
     if (fileInput.current) fileInput.current.value = ''
   }
 
-  const salvar = async () => {
+  // "Salvar chamada" (logo após a lista de alunos) não exige foto — dá pra
+  // anexar depois, na confirmação. "Finalizar aula" (no fim da página) exige
+  // presença marcada e pelo menos uma foto antes de enviar.
+  const enviar = async (exigirFoto: boolean) => {
     const novosErros: Record<string, string> = {}
     if (!numeroAula) novosErros.aula = 'Selecione a aula.'
     if (!dataAula) novosErros.data = 'Informe a data da aula.'
     if (professoresPreenchidos.length === 0) novosErros.professor = 'Informe ao menos um professor.'
     const marcados = Object.keys(presencas)
     if (marcados.length === 0) novosErros.presencas = 'Marque a presença de pelo menos um aluno.'
+    if (exigirFoto && fotos.length === 0) {
+      novosErros.fotos = 'Anexe pelo menos uma foto da aula para finalizar.'
+    }
     setErros(novosErros)
     if (Object.keys(novosErros).length) {
-      toast.error('Confira os campos destacados antes de salvar.')
+      toast.error('Confira os campos destacados antes de continuar.')
       return
     }
 
@@ -112,6 +118,9 @@ export default function Chamada() {
       setSalvando(false)
     }
   }
+
+  const salvarChamada = () => enviar(false)
+  const finalizarAula = () => enviar(true)
 
   const presentesCount = dados.alunos.filter((a) => presencas[a.id]).length
   const marcadosCount = Object.keys(presencas).length
@@ -283,6 +292,14 @@ export default function Chamada() {
         )}
       </div>
 
+      {/* Botão de salvar — checkpoint rápido, não exige foto */}
+      <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
+              onClick={salvarChamada} disabled={salvando}>
+        {salvando
+          ? 'Salvando…'
+          : `Salvar chamada${marcadosCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
+      </button>
+
       {/* Observações e relatório */}
       <div className="card flex flex-col gap-4">
         <Field label="Observações">
@@ -298,10 +315,12 @@ export default function Chamada() {
 
       {/* Fotos */}
       <div className="card flex flex-col gap-3">
-        <h2 className="font-bold">Fotos da aula <span className="text-xs font-normal text-[var(--c-text-soft)]">(opcional)</span></h2>
+        <h2 className="font-bold">Fotos da aula</h2>
         <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
-          A foto fica para o final da aula? Sem problema: <strong>salve a chamada
-          agora</strong> e anexe as fotos depois, na tela de confirmação.
+          Para usar o botão <strong>Finalizar aula</strong> abaixo, é obrigatório
+          anexar pelo menos uma foto. Se preferir, use o botão <strong>Salvar
+          chamada</strong> acima — aí a foto é opcional e pode ser anexada depois,
+          na tela de confirmação.
         </p>
         <input
           ref={fileInput}
@@ -312,6 +331,7 @@ export default function Chamada() {
         <label htmlFor="fotos-input" className="btn btn-ghost btn-lg cursor-pointer">
           📷 Adicionar fotos
         </label>
+        {erros.fotos && <p className="field-error">{erros.fotos}</p>}
         <p className="text-xs text-[var(--c-text-soft)]">
           Apenas imagens, até 5 MB cada, máximo de {MAX_FOTOS} fotos.
         </p>
@@ -334,12 +354,10 @@ export default function Chamada() {
         )}
       </div>
 
-      {/* Botão de salvar — logo abaixo da chamada */}
+      {/* Botão de finalizar — exige presença marcada e ao menos uma foto */}
       <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
-              onClick={salvar} disabled={salvando}>
-        {salvando
-          ? 'Salvando chamada…'
-          : `Salvar chamada${marcadosCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
+              onClick={finalizarAula} disabled={salvando}>
+        {salvando ? 'Finalizando…' : 'Finalizar aula'}
       </button>
 
       {/* Modal de responsáveis (somente leitura) */}

@@ -127,20 +127,12 @@ export default function HistoricoDetalhe() {
         </div>
       </div>
 
-      {/* Observações e relatório */}
-      <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
-        <div className="card">
-          <h2 className="mb-2 font-bold">Observações</h2>
-          <p className="whitespace-pre-wrap text-sm text-[var(--c-text-soft)]">
-            {registro.observacoes || 'Sem observações.'}
-          </p>
-        </div>
-        <div className="card">
-          <h2 className="mb-2 font-bold">Relatório da aula</h2>
-          <p className="whitespace-pre-wrap text-sm text-[var(--c-text-soft)]">
-            {registro.relatorio || 'Sem relatório.'}
-          </p>
-        </div>
+      {/* Relatório da aula */}
+      <div className="card">
+        <h2 className="mb-2 font-bold">Relatório da aula</h2>
+        <p className="whitespace-pre-wrap text-sm text-[var(--c-text-soft)]">
+          {registro.relatorio || 'Sem relatório.'}
+        </p>
       </div>
 
       {/* Fotos */}

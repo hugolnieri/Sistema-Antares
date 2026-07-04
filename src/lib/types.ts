@@ -102,7 +102,6 @@ export interface HistoricoAula {
   professor_nome: string
   professores_nomes: string[]
   data_hora: string
-  observacoes: string | null
   relatorio: string | null
   criado_por: string
   created_at: string

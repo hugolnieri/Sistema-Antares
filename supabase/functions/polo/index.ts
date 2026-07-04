@@ -221,7 +221,6 @@ async function acaoChamada(form: FormData) {
     professoresNomes?: string[];
     professorNome?: string; // compatibilidade
     dataAula?: string;      // YYYY-MM-DD
-    observacoes?: string;
     relatorio?: string;
     presencas: { alunoId: string; presente: boolean }[];
     alunosExtras?: string[];
@@ -270,7 +269,6 @@ async function acaoChamada(form: FormData) {
       professor_nome: professores.join(", "),
       professores_nomes: professores,
       data_hora: dataHora,
-      observacoes: dados.observacoes || null,
       relatorio: dados.relatorio || null,
       criado_por: "professor",
     })

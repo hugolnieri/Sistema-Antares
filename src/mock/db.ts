@@ -111,9 +111,9 @@ function seed(): MockDB {
       { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(3) },
     ],
     historico_aulas: [
-      { id: h1, polo_id: p1, numero_aula: 3, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), observacoes: 'Turma participativa. Davi chegou atrasado.', relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
-      { id: h2, polo_id: p2, numero_aula: 1, professor_nome: 'Bruno Castro', professores_nomes: ['Bruno Castro'], data_hora: diasAtras(5), observacoes: null, relatorio: 'Aula de boas-vindas, apresentação do programa às famílias.', criado_por: 'professor', created_at: diasAtras(5) },
-      { id: h3, polo_id: p1, numero_aula: 2, professor_nome: 'Ana Lima', professores_nomes: ['Ana Lima'], data_hora: diasAtras(20), observacoes: 'Sem observações.', relatorio: null, criado_por: 'professor', created_at: diasAtras(20) },
+      { id: h1, polo_id: p1, numero_aula: 3, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
+      { id: h2, polo_id: p2, numero_aula: 1, professor_nome: 'Bruno Castro', professores_nomes: ['Bruno Castro'], data_hora: diasAtras(5), relatorio: 'Aula de boas-vindas, apresentação do programa às famílias.', criado_por: 'professor', created_at: diasAtras(5) },
+      { id: h3, polo_id: p1, numero_aula: 2, professor_nome: 'Ana Lima', professores_nomes: ['Ana Lima'], data_hora: diasAtras(20), relatorio: null, criado_por: 'professor', created_at: diasAtras(20) },
     ],
     presencas: [
       { id: uuid(), historico_id: h1, aluno_id: al[0], presente: true },

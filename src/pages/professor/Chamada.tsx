@@ -21,7 +21,6 @@ export default function Chamada() {
   // Padrão: 2 campos de professor (só o 1º é obrigatório)
   const [professores, setProfessores] = useState<string[]>(['', ''])
   const [presencas, setPresencas] = useState<Record<string, boolean>>({})
-  const [observacoes, setObservacoes] = useState('')
   const [relatorio, setRelatorio] = useState('')
   const [fotos, setFotos] = useState<File[]>([])
   const [alunosExtras, setAlunosExtras] = useState<string[]>([])
@@ -94,7 +93,6 @@ export default function Chamada() {
         numeroAula,
         professoresNomes: professoresPreenchidos,
         dataAula,
-        observacoes: observacoes.trim() || undefined,
         relatorio: relatorio.trim() || undefined,
         presencas: lista,
         alunosExtras: alunosExtras.length ? alunosExtras : undefined,
@@ -300,12 +298,8 @@ export default function Chamada() {
           : `Salvar chamada${marcadosCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
       </button>
 
-      {/* Observações e relatório */}
+      {/* Relatório da aula */}
       <div className="card flex flex-col gap-4">
-        <Field label="Observações">
-          <textarea rows={3} value={observacoes} placeholder="Alguma observação sobre a aula?"
-                    onChange={(e) => setObservacoes(e.target.value)} />
-        </Field>
         <Field label="Relatório da aula">
           <textarea rows={4} value={relatorio}
                     placeholder="Como foi a aula? O que foi trabalhado?"

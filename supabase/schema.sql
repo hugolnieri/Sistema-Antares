@@ -104,7 +104,6 @@ create table if not exists historico_aulas (
   professor_nome    text not null,             -- nomes concatenados (exibição)
   professores_nomes text[] not null default '{}', -- lista de professores da aula
   data_hora         timestamptz not null default now(),
-  observacoes       text,
   relatorio         text,
   criado_por        text not null default 'professor',
   created_at        timestamptz not null default now()

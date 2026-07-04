@@ -91,7 +91,6 @@ export const mockPoloApi = {
       numeroAula: number
       professoresNomes: string[]
       dataAula: string
-      observacoes?: string
       relatorio?: string
       presencas: { alunoId: string; presente: boolean }[]
       alunosExtras?: string[]
@@ -133,7 +132,6 @@ export const mockPoloApi = {
       professor_nome: professores.join(', '),
       professores_nomes: professores,
       data_hora: dataHora,
-      observacoes: dados.observacoes || null,
       relatorio: dados.relatorio || null,
       criado_por: 'professor',
       created_at: agora,

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { BrandHeader } from './Logo'
+import { Logo } from './Logo'
+import { Icon, type IconName } from './Icons'
 import { fmtData } from '../lib/format'
 
 /* ---------- Guarda de autenticação ---------- */
@@ -28,18 +29,18 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
-/* ---------- Navegação (itens do topo) ---------- */
+/* ---------- Navegação lateral ---------- */
 
-const NAV = [
-  { to: '/admin', label: 'Dashboard', icon: '📊', end: true },
-  { to: '/admin/polos', label: 'Polos', icon: '📍' },
-  { to: '/admin/professores', label: 'Professores', icon: '🧑‍🏫' },
-  { to: '/admin/alunos', label: 'Alunos', icon: '🎓' },
-  { to: '/admin/responsaveis', label: 'Responsáveis', icon: '👪' },
-  { to: '/admin/mapeamento', label: 'Mapeamento', icon: '🗺️' },
-  { to: '/admin/cronograma', label: 'Cronograma', icon: '📅' },
-  { to: '/admin/materiais', label: 'Materiais', icon: '📚' },
-  { to: '/admin/historico', label: 'Histórico', icon: '🕘' },
+const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
+  { to: '/admin', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/admin/polos', label: 'Polos', icon: 'polos' },
+  { to: '/admin/professores', label: 'Professores', icon: 'professores' },
+  { to: '/admin/alunos', label: 'Alunos', icon: 'alunos' },
+  { to: '/admin/responsaveis', label: 'Responsáveis', icon: 'responsaveis' },
+  { to: '/admin/mapeamento', label: 'Mapeamento', icon: 'mapeamento' },
+  { to: '/admin/cronograma', label: 'Cronograma', icon: 'cronograma' },
+  { to: '/admin/materiais', label: 'Materiais', icon: 'materiais' },
+  { to: '/admin/historico', label: 'Histórico', icon: 'historico' },
 ]
 
 const TITULOS: Record<string, string> = {
@@ -71,7 +72,6 @@ export function AdminShell() {
 
   useEffect(() => { setMenuAberto(false); setNotifsAbertas(false) }, [location.pathname])
 
-  // Fecha o painel de notificações ao clicar fora
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -82,7 +82,6 @@ export function AdminShell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  // Notificações: sugestões de aluno pendentes + eventos/aulas próximos
   useEffect(() => {
     const hoje = new Date().toLocaleDateString('en-CA')
     const em3 = new Date(Date.now() + 3 * 86400000).toLocaleDateString('en-CA')
@@ -126,34 +125,76 @@ export function AdminShell() {
   const titulo = TITULOS[location.pathname] ?? TITULOS[base.replace(/\/$/, '')] ?? 'Detalhe'
   const inicial = (email[0] ?? 'A').toUpperCase()
 
+  const navLista = (
+    <nav className="flex flex-col gap-1">
+      {NAV.map((item) => (
+        <NavLink key={item.to} to={item.to} end={item.end}
+                 className={({ isActive }) => `side-item ${isActive ? 'is-active' : ''}`}>
+          <Icon name={item.icon} />
+          {item.label}
+        </NavLink>
+      ))}
+    </nav>
+  )
+
   return (
-    <div className="min-h-screen">
-      {/* Topbar de marca + ações */}
-      <header className="sticky top-0 z-30 border-b border-[var(--c-border)] bg-white">
-        <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-          <BrandHeader size={40} />
+    <div className="flex min-h-screen">
+      {/* Backdrop mobile */}
+      {menuAberto && (
+        <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenuAberto(false)} />
+      )}
+
+      {/* Menu lateral */}
+      <aside className={`fixed z-40 flex h-screen w-[248px] flex-col border-r border-[var(--c-border)] bg-white transition-transform lg:sticky lg:top-0 lg:translate-x-0 ${
+        menuAberto ? 'translate-x-0' : '-translate-x-full'
+      }`}>
+        <div className="brand-stripe h-1 w-full" />
+        <div className="flex items-center gap-3 px-4 py-4">
+          <Logo size={40} />
+          <div className="leading-tight">
+            <p className="font-bold tracking-tight">Antares</p>
+            <p className="text-[11px] text-[var(--c-text-soft)]">Formação de Bombeiros Civis</p>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-3 pb-3">{navLista}</div>
+        <div className="border-t border-[var(--c-border)] p-3">
+          <button className="side-item w-full" onClick={sair}>
+            <Icon name="sair" /> Sair
+          </button>
+        </div>
+      </aside>
+
+      {/* Área principal */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-[var(--c-border)] bg-white px-4 sm:px-6">
+          <span className="lg:hidden">
+            <button className="icon-btn" aria-label="Abrir menu" onClick={() => setMenuAberto(true)}>
+              <Icon name="menu" />
+            </button>
+          </span>
+          <h1 className="text-lg font-bold">{titulo}</h1>
 
           <div className="ml-auto flex items-center gap-2">
-            <NavLink to="/admin/historico" className="icon-btn" aria-label="Buscar" title="Buscar no histórico">🔍</NavLink>
+            <NavLink to="/admin/historico" className="icon-btn" aria-label="Buscar no histórico" title="Buscar no histórico">
+              <Icon name="busca" size={18} />
+            </NavLink>
 
-            {/* Notificações */}
             <div className="relative" ref={notifRef}>
-              <button className="icon-btn" aria-label="Notificações"
-                      onClick={() => setNotifsAbertas((v) => !v)}>
-                🔔
+              <button className="icon-btn" aria-label="Notificações" onClick={() => setNotifsAbertas((v) => !v)}>
+                <Icon name="sino" size={18} />
                 {notifs.length > 0 && <span className="dot">{notifs.length}</span>}
               </button>
               {notifsAbertas && (
                 <div className="absolute right-0 top-12 z-40 w-[320px] max-w-[90vw] overflow-hidden rounded-xl border border-[var(--c-border)] bg-white shadow-xl">
                   <div className="border-b border-[var(--c-border)] p-3 font-bold">Notificações</div>
                   {notifs.length === 0 ? (
-                    <p className="p-4 text-sm text-[var(--c-text-soft)]">Nada de novo por aqui. 🎉</p>
+                    <p className="p-4 text-sm text-[var(--c-text-soft)]">Nada de novo por aqui.</p>
                   ) : (
                     <ul className="max-h-[60vh] overflow-y-auto">
                       {notifs.map((n) => (
                         <li key={n.id}>
                           <Link to={n.to}
-                                className="flex items-start gap-2 border-b border-[var(--c-border)] p-3 text-sm hover:bg-[var(--c-gray-bg)]">
+                                className="flex items-start gap-2 border-b border-[var(--c-border)] p-3 text-sm hover:bg-[var(--c-primary-soft)]">
                             <span aria-hidden="true">{n.icon}</span>
                             <span>{n.texto}</span>
                           </Link>
@@ -165,53 +206,22 @@ export function AdminShell() {
               )}
             </div>
 
-            {/* Avatar + sair */}
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--c-primary)] font-bold text-white"
                  title={email}>
               {inicial}
             </div>
-            <button className="btn btn-ghost !px-3 !py-1.5" onClick={sair}>Sair</button>
-
-            {/* Menu mobile */}
-            <span className="lg:hidden">
-              <button className="icon-btn" aria-label="Abrir menu"
-                      onClick={() => setMenuAberto((v) => !v)}>☰</button>
-            </span>
           </div>
-        </div>
+        </header>
 
-        {/* Navegação horizontal (desktop) */}
-        <nav className="hidden gap-1 overflow-x-auto px-4 pb-2 sm:px-6 lg:flex">
-          {NAV.map((item) => (
-            <NavLink key={item.to} to={item.to} end={(item as any).end}
-                     className={({ isActive }) => `topnav-item ${isActive ? 'is-active' : ''}`}>
-              <span aria-hidden="true">{item.icon}</span> {item.label}
-            </NavLink>
-          ))}
+        <nav className="px-4 pt-4 text-sm text-[var(--c-text-soft)] sm:px-6" aria-label="breadcrumb">
+          <Link to="/admin" className="hover:underline">Início</Link>
+          {location.pathname !== '/admin' && <> / <span>{titulo}</span></>}
         </nav>
 
-        {/* Navegação (mobile, dropdown) */}
-        {menuAberto && (
-          <nav className="flex flex-col gap-1 border-t border-[var(--c-border)] p-3 lg:hidden">
-            {NAV.map((item) => (
-              <NavLink key={item.to} to={item.to} end={(item as any).end}
-                       className={({ isActive }) => `topnav-item ${isActive ? 'is-active' : ''}`}>
-                <span aria-hidden="true">{item.icon}</span> {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        )}
-      </header>
-
-      {/* Breadcrumb + conteúdo */}
-      <nav className="px-4 pt-4 text-sm text-[var(--c-text-soft)] sm:px-6" aria-label="breadcrumb">
-        <Link to="/admin" className="hover:underline">Início</Link>
-        {location.pathname !== '/admin' && <> / <span>{titulo}</span></>}
-      </nav>
-
-      <main className="mx-auto max-w-[1400px] p-4 pt-4 sm:p-6 sm:pt-4">
-        <Outlet />
-      </main>
+        <main className="flex-1 p-4 pt-4 sm:p-6 sm:pt-4">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

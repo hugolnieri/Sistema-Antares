@@ -13,20 +13,28 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 
-  --c-bg: #f4f5f7;
+  /* ---- Identidade visual Antares ---- */
+  --brand-blue:   #83a2db;   /* periwinkle */
+  --brand-coral:  #fd8e8c;   /* salmão */
+  --brand-yellow: #ffce87;   /* dourado */
+  --brand-gray:   #dbdbdb;
+  --brand-navy:   #1e2733;   /* o "Black" da marca */
+
+  --c-bg: #f5f6f9;
   --c-surface: #ffffff;
-  --c-border: #e2e4e9;
-  --c-text: #1a1d23;
-  --c-text-soft: #5c626e;
-  --c-primary: #2f4fd8;
-  --c-primary-hover: #2542b8;
-  --c-danger: #d43333;
+  --c-border: #e6e8ee;
+  --c-text: #1e2733;
+  --c-text-soft: #6b7280;
+  --c-primary: #4f72bd;        /* azul da marca em tom acessível (texto branco) */
+  --c-primary-hover: #41609f;
+  --c-primary-soft: #eef2fb;   /* tinte do azul para hover/realce */
+  --c-danger: #e5534b;         /* coral em tom acessível */
 
   --c-green-bg: #e5f6ec;  --c-green-fg: #147a3d;
-  --c-amber-bg: #fdf3dc;  --c-amber-fg: #96660a;
-  --c-red-bg:   #fde8e8;  --c-red-fg:   #b42323;
-  --c-gray-bg:  #eef0f3;  --c-gray-fg:  #5c626e;
-  --c-blue-bg:  #e7edfd;  --c-blue-fg:  #2743ae;
+  --c-amber-bg: #fff2d6;  --c-amber-fg: #8a5a00;   /* alinhado ao amarelo da marca */
+  --c-red-bg:   #ffe6e5;  --c-red-fg:   #c0403a;   /* alinhado ao coral da marca */
+  --c-gray-bg:  #eef0f3;  --c-gray-fg:  #6b7280;
+  --c-blue-bg:  #eaf0fb;  --c-blue-fg:  #3a5aa8;   /* alinhado ao periwinkle */
 }
 
 body {
@@ -123,16 +131,20 @@ body {
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
-/* ============ NAVEGAÇÃO NO TOPO (pill ativo) ============ */
-.topnav-item {
-  display: inline-flex; align-items: center; gap: var(--space-2);
-  padding: 8px 14px; border-radius: 999px;
-  font-size: 14px; font-weight: 600; white-space: nowrap;
+/* ============ MENU LATERAL (item com ícone + label) ============ */
+.side-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 10px 12px; border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 500; white-space: nowrap;
   color: var(--c-text-soft);
   transition: background 0.15s, color 0.15s;
 }
-.topnav-item:hover { color: var(--c-text); background: var(--c-gray-bg); }
-.topnav-item.is-active { background: #1a1d23; color: #fff; }
+.side-item:hover { color: var(--c-primary); background: var(--c-primary-soft); }
+.side-item.is-active {
+  background: var(--c-primary); color: #fff; font-weight: 600;
+  box-shadow: 0 6px 16px -6px rgba(79, 114, 189, 0.7);
+}
+.side-item.is-active:hover { color: #fff; }
 
 /* ============ BOTÕES DE ÍCONE (busca, notificações) ============ */
 .icon-btn {
@@ -153,11 +165,17 @@ body {
   border: 2px solid var(--c-surface);
 }
 
-/* ============ DEGRADÊ (cards de destaque) ============ */
+/* ============ GRADIENTE-ASSINATURA (identidade Antares) ============ */
+/* azul → coral → amarelo → branco, como na identidade visual */
 .gradient-hero {
-  background: linear-gradient(120deg,
-    #e8ecff 0%, #f1e9ff 34%, #ffe9f3 66%, #e6f9ec 100%);
+  background: linear-gradient(108deg,
+    #9fb6e4 0%, #c7b6d8 34%, #fbb4b6 62%, #ffd9a6 84%, #fff7ec 100%);
 }
 .gradient-soft {
-  background: linear-gradient(135deg, #f3f0ff 0%, #eef6ff 55%, #eafaf0 100%);
+  background: linear-gradient(135deg, #eef2fb 0%, #fdeef0 55%, #fff5e6 100%);
+}
+/* faixa fina do gradiente da marca (assinatura no topo da sidebar) */
+.brand-stripe {
+  background: linear-gradient(90deg,
+    var(--brand-blue) 0%, var(--brand-coral) 55%, var(--brand-yellow) 100%);
 }

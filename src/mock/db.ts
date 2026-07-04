@@ -15,7 +15,6 @@ export interface MockDB {
   presencas: any[]
   fotos_aula: any[]
   alunos_sugeridos: any[]
-  eventos: any[]
 }
 
 const KEY = 'antares-mock-db'
@@ -104,12 +103,12 @@ function seed(): MockDB {
       { id: uuid(), numero_aula: 6, titulo: 'Aula em revisão (oculta)', descricao: 'Material sendo atualizado.', arquivo_path: 'aula-06.pdf', status: 'inativo', created_at: diasAtras(65) },
     ],
     cronograma: [
-      { id: uuid(), polo_id: p1, numero_aula: 3, data: dataEm(-7), professor_id: pr1, observacoes: null, status: 'concluida', created_at: diasAtras(20) },
-      { id: uuid(), polo_id: p2, numero_aula: 1, data: dataEm(-5), professor_id: pr2, observacoes: null, status: 'concluida', created_at: diasAtras(20) },
-      { id: uuid(), polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', created_at: diasAtras(10) },
-      { id: uuid(), polo_id: p3, numero_aula: 1, data: dataEm(3), professor_id: null, observacoes: 'Professor a definir.', status: 'agendada', created_at: diasAtras(8) },
-      { id: uuid(), polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', created_at: diasAtras(5) },
-      { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', created_at: diasAtras(3) },
+      { id: uuid(), polo_id: p1, numero_aula: 3, data: dataEm(-7), professor_id: pr1, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(20) },
+      { id: uuid(), polo_id: p2, numero_aula: 1, data: dataEm(-5), professor_id: pr2, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(20) },
+      { id: uuid(), polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Organizar materiais', created_at: diasAtras(10) },
+      { id: uuid(), polo_id: p3, numero_aula: 1, data: dataEm(3), professor_id: null, observacoes: 'Professor a definir.', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Imprimir listas de presença', created_at: diasAtras(8) },
+      { id: uuid(), polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(5) },
+      { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(3) },
     ],
     historico_aulas: [
       { id: h1, polo_id: p1, numero_aula: 3, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), observacoes: 'Turma participativa. Davi chegou atrasado.', relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
@@ -137,11 +136,6 @@ function seed(): MockDB {
     alunos_sugeridos: [
       { id: uuid(), polo_id: p1, historico_id: h1, nome: 'Sofia Andrade', status: 'pendente', created_at: diasAtras(2) },
     ],
-    eventos: [
-      { id: uuid(), titulo: 'Preparar documentos da Aula 4', data: dataEm(-2), tipo: 'preparo', polo_id: p1, descricao: 'Imprimir listas e material de apoio.', created_at: diasAtras(10) },
-      { id: uuid(), titulo: 'Reunião pedagógica mensal', data: dataEm(5), tipo: 'reuniao', polo_id: null, descricao: 'Alinhamento com todos os professores.', created_at: diasAtras(6) },
-      { id: uuid(), titulo: 'Entrega de relatórios ao coordenador', data: dataEm(10), tipo: 'entrega', polo_id: p2, descricao: null, created_at: diasAtras(4) },
-    ],
   }
 }
 
@@ -150,9 +144,13 @@ export function loadDB(): MockDB {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const db = JSON.parse(raw) as MockDB
-      // Migração: dados salvos antes de novas tabelas existirem
+      // Migração: dados salvos antes de novas tabelas/colunas existirem
       if (!db.alunos_sugeridos) db.alunos_sugeridos = []
-      if (!db.eventos) db.eventos = []
+      delete (db as any).eventos
+      for (const c of db.cronograma) {
+        if (c.lembrete_dias_antes === undefined) c.lembrete_dias_antes = null
+        if (c.lembrete_texto === undefined) c.lembrete_texto = null
+      }
       return db
     }
   } catch { /* seed abaixo */ }

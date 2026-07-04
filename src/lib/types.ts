@@ -88,6 +88,8 @@ export interface CronogramaItem {
   professor_id: string | null
   observacoes: string | null
   status: 'agendada' | 'concluida' | 'cancelada'
+  lembrete_dias_antes: number | null
+  lembrete_texto: string | null
   created_at: string
   polos?: { nome: string } | null
   professores?: { nome: string } | null
@@ -107,19 +109,6 @@ export interface HistoricoAula {
   polos?: { nome: string } | null
   presencas?: Presenca[]
   fotos_aula?: FotoAula[]
-}
-
-export type EventoTipo = 'preparo' | 'reuniao' | 'entrega' | 'geral'
-
-export interface Evento {
-  id: string
-  titulo: string
-  data: string
-  tipo: EventoTipo
-  polo_id: string | null
-  descricao: string | null
-  created_at: string
-  polos?: { nome: string } | null
 }
 
 export interface Presenca {

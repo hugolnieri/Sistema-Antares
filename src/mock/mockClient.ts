@@ -78,10 +78,6 @@ function embed(db: MockDB, table: string, row: any, sel: string): any {
     r.polos = nomeDe(db.polos, row.polo_id)
   }
 
-  if (table === 'eventos' && sel.includes('polos(')) {
-    r.polos = nomeDe(db.polos, row.polo_id)
-  }
-
   if (table === 'presencas' && sel.includes('historico_aulas')) {
     const h = db.historico_aulas.find((x) => x.id === row.historico_id)
     r.historico_aulas = h

@@ -4,7 +4,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { Logo } from './Logo'
 import { Icon, type IconName } from './Icons'
-import { fmtData } from '../lib/format'
+import { fmtData, subtrairDias } from '../lib/format'
 
 /* ---------- Guarda de autenticação ---------- */
 
@@ -85,11 +85,16 @@ export function AdminShell() {
   useEffect(() => {
     const hoje = new Date().toLocaleDateString('en-CA')
     const em3 = new Date(Date.now() + 3 * 86400000).toLocaleDateString('en-CA')
+    const em30 = new Date(Date.now() + 30 * 86400000).toLocaleDateString('en-CA')
     Promise.all([
       supabase.from('alunos_sugeridos').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
-      supabase.from('eventos').select('id, titulo, data, tipo').gte('data', hoje).lte('data', em3).order('data'),
-      supabase.from('cronograma').select('id, numero_aula, data, polos(nome)').eq('data', hoje),
-    ]).then(([sug, ev, cr]) => {
+      // Janela ampla de aulas futuras: um lembrete pode cair nos próximos dias
+      // mesmo que a aula em si esteja mais distante (ex.: aula em 10 dias,
+      // lembrete 8 dias antes -> lembrete daqui a 2 dias).
+      supabase.from('cronograma')
+        .select('id, numero_aula, data, lembrete_dias_antes, lembrete_texto, polos(nome)')
+        .gte('data', hoje).lte('data', em30).order('data'),
+    ]).then(([sug, cr]) => {
       const lista: Notif[] = []
       if ((sug.count ?? 0) > 0) {
         lista.push({
@@ -99,18 +104,23 @@ export function AdminShell() {
         })
       }
       for (const c of (cr.data ?? []) as any[]) {
-        lista.push({
-          id: `cr-${c.id}`, icon: '📅',
-          texto: `Hoje: Aula ${c.numero_aula} · ${c.polos?.nome ?? ''}`,
-          to: '/admin/cronograma',
-        })
-      }
-      for (const e of (ev.data ?? []) as any[]) {
-        lista.push({
-          id: `ev-${e.id}`, icon: e.tipo === 'preparo' ? '📄' : '📌',
-          texto: `${fmtData(e.data)}: ${e.titulo}`,
-          to: '/admin/cronograma',
-        })
+        if (c.data === hoje) {
+          lista.push({
+            id: `cr-${c.id}`, icon: '📅',
+            texto: `Hoje: Aula ${c.numero_aula} · ${c.polos?.nome ?? ''}`,
+            to: '/admin/cronograma',
+          })
+        }
+        if (c.lembrete_dias_antes != null) {
+          const dataLembrete = subtrairDias(c.data, c.lembrete_dias_antes)
+          if (dataLembrete >= hoje && dataLembrete <= em3) {
+            lista.push({
+              id: `lb-${c.id}`, icon: '📄',
+              texto: `${fmtData(dataLembrete)}: ${c.lembrete_texto || 'Lembrete'}`,
+              to: '/admin/cronograma',
+            })
+          }
+        }
       }
       setNotifs(lista)
     })
@@ -175,10 +185,6 @@ export function AdminShell() {
           <h1 className="text-lg font-bold">{titulo}</h1>
 
           <div className="ml-auto flex items-center gap-2">
-            <NavLink to="/admin/historico" className="icon-btn" aria-label="Buscar no histórico" title="Buscar no histórico">
-              <Icon name="busca" size={18} />
-            </NavLink>
-
             <div className="relative" ref={notifRef}>
               <button className="icon-btn" aria-label="Notificações" onClick={() => setNotifsAbertas((v) => !v)}>
                 <Icon name="sino" size={18} />

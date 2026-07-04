@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { KpiCard, StatusBadge, EmptyState } from '../../components/ui'
 import { statusDe } from '../../lib/status'
-import { fmtData, fmtDataHora } from '../../lib/format'
-import type { CronogramaItem, Evento, HistoricoAula } from '../../lib/types'
+import { fmtData, fmtDataHora, subtrairDias } from '../../lib/format'
+import type { CronogramaItem, HistoricoAula } from '../../lib/types'
 
 interface Kpis {
   polos: number
@@ -13,15 +13,24 @@ interface Kpis {
   chamadasMes: number
 }
 
+interface Lembrete {
+  id: string
+  data: string
+  texto: string
+  numeroAula: number
+  poloNome: string
+}
+
 export default function Dashboard() {
   const [kpis, setKpis] = useState<Kpis | null>(null)
   const [ultimas, setUltimas] = useState<HistoricoAula[]>([])
   const [aulasHoje, setAulasHoje] = useState<CronogramaItem[]>([])
-  const [tarefas, setTarefas] = useState<Evento[]>([])
+  const [lembretes, setLembretes] = useState<Lembrete[]>([])
   const [erro, setErro] = useState('')
 
   const agora = new Date()
   const hoje = agora.toLocaleDateString('en-CA')
+  const em30 = new Date(Date.now() + 30 * 86400000).toLocaleDateString('en-CA')
   const em7 = new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-CA')
   const saudacao = agora.getHours() < 12 ? 'Bom dia' : agora.getHours() < 18 ? 'Boa tarde' : 'Boa noite'
   const dataExtenso = agora.toLocaleDateString('pt-BR', {
@@ -41,23 +50,39 @@ export default function Dashboard() {
       supabase.from('historico_aulas')
         .select('id, numero_aula, professor_nome, data_hora, polos(nome)')
         .order('data_hora', { ascending: false }).limit(6),
+      // Aulas dos próximos 30 dias — usadas para "hoje" e para calcular os lembretes
       supabase.from('cronograma')
         .select('*, polos(nome), professores(nome)')
-        .eq('data', hoje).order('numero_aula'),
-      supabase.from('eventos')
-        .select('*, polos(nome)')
-        .gte('data', hoje).lte('data', em7).order('data'),
-    ]).then(([p, a, pr, ch, ult, hj, ev]) => {
+        .gte('data', hoje).lte('data', em30).order('data'),
+    ]).then(([p, a, pr, ch, ult, prox]) => {
       if (ult.error) { setErro('Não foi possível carregar os dados.'); return }
       setKpis({
         polos: p.count ?? 0, alunos: a.count ?? 0,
         professores: pr.count ?? 0, chamadasMes: ch.count ?? 0,
       })
       setUltimas((ult.data ?? []) as unknown as HistoricoAula[])
-      setAulasHoje((hj.data ?? []) as unknown as CronogramaItem[])
-      setTarefas((ev.data ?? []) as unknown as Evento[])
+
+      const proximasAulas = (prox.data ?? []) as unknown as CronogramaItem[]
+      setAulasHoje(proximasAulas.filter((c) => c.data === hoje))
+
+      // Lembretes: data do lembrete = data da aula - dias de antecedência.
+      // Mostra os que vencem dentro dos próximos 7 dias (incluindo atrasados).
+      const proximosLembretes = proximasAulas
+        .filter((c) => c.lembrete_dias_antes != null)
+        .map((c): Lembrete => ({
+          id: c.id,
+          data: subtrairDias(c.data, c.lembrete_dias_antes!),
+          texto: c.lembrete_texto || 'Lembrete',
+          numeroAula: c.numero_aula,
+          poloNome: c.polos?.nome ?? '',
+        }))
+        .filter((l) => l.data <= em7)
+        .sort((a, b) => a.data.localeCompare(b.data))
+      setLembretes(proximosLembretes)
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const lembretesHoje = lembretes.filter((l) => l.data === hoje)
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,8 +99,8 @@ export default function Dashboard() {
               <p className="text-xs font-semibold text-[var(--c-text-soft)]">Aulas hoje</p>
             </div>
             <div>
-              <span className="text-3xl font-bold">{tarefas.filter((t) => t.data === hoje).length}</span>
-              <p className="text-xs font-semibold text-[var(--c-text-soft)]">Tarefas hoje</p>
+              <span className="text-3xl font-bold">{lembretesHoje.length}</span>
+              <p className="text-xs font-semibold text-[var(--c-text-soft)]">Lembretes hoje</p>
             </div>
             <div>
               <span className="text-3xl font-bold">{kpis?.chamadasMes ?? '…'}</span>
@@ -89,9 +114,9 @@ export default function Dashboard() {
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-text-soft)]">
             Sua agenda de hoje
           </p>
-          {aulasHoje.length === 0 && tarefas.filter((t) => t.data === hoje).length === 0 ? (
+          {aulasHoje.length === 0 && lembretesHoje.length === 0 ? (
             <p className="rounded-lg bg-white/60 p-3 text-sm text-[var(--c-text-soft)]">
-              Nenhuma aula ou tarefa marcada para hoje.
+              Nenhuma aula ou lembrete marcado para hoje.
             </p>
           ) : (
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -105,13 +130,13 @@ export default function Dashboard() {
                   <span className="text-[var(--c-text-soft)]">{c.polos?.nome ?? ''}</span>
                 </Link>
               ))}
-              {tarefas.filter((t) => t.data === hoje).map((t) => (
-                <Link key={t.id} to="/admin/cronograma"
+              {lembretesHoje.map((l) => (
+                <Link key={l.id} to="/admin/cronograma"
                       className="flex shrink-0 items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm shadow-sm hover:bg-white">
-                  <span className={`badge badge--${statusDe(t.tipo).color} !px-1.5 !py-0`}>
-                    {statusDe(t.tipo).icon}
+                  <span className={`badge badge--${statusDe('lembrete').color} !px-1.5 !py-0`}>
+                    {statusDe('lembrete').icon}
                   </span>
-                  <span className="font-semibold">{t.titulo}</span>
+                  <span className="font-semibold">{l.texto}</span>
                 </Link>
               ))}
             </div>
@@ -127,48 +152,37 @@ export default function Dashboard() {
         <KpiCard label="Chamadas no mês" value={kpis ? kpis.chamadasMes : '…'} />
       </div>
 
-      {/* Resumo do dia: tarefas de preparação + últimas chamadas */}
+      {/* Resumo do dia: lembretes das aulas + últimas chamadas */}
       <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}>
-        {/* Tarefas / preparação de documentos */}
+        {/* Lembretes das aulas (ex.: organizar materiais dias antes) */}
         <div className="card !p-0">
           <div className="flex items-center justify-between p-4">
-            <h2 className="font-bold">Tarefas da semana</h2>
+            <h2 className="font-bold">Lembretes da semana</h2>
             <Link to="/admin/cronograma" className="text-sm font-semibold text-[var(--c-primary)] hover:underline">
               Ver cronograma →
             </Link>
           </div>
           <div className="border-t border-[var(--c-border)]">
-            {tarefas.length === 0 ? (
+            {lembretes.length === 0 ? (
               <EmptyState
-                icon="🗂️" title="Nenhuma tarefa próxima"
-                message="Crie eventos no cronograma (ex.: preparar documentos antes da aula)."
+                icon="🗂️" title="Nenhum lembrete próximo"
+                message="Adicione um lembrete ao agendar uma aula no cronograma (ex.: organizar materiais dias antes)."
               />
             ) : (
               <ul>
-                {tarefas.map((t) => (
-                  <li key={t.id} className="flex items-center gap-3 border-b border-[var(--c-border)] p-3">
-                    {/* Ícones de documento para tarefas de preparação */}
+                {lembretes.map((l) => (
+                  <li key={l.id} className="flex items-center gap-3 border-b border-[var(--c-border)] p-3">
                     <div className="flex shrink-0 -space-x-2">
-                      {t.tipo === 'preparo' ? (
-                        <>
-                          <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-red-bg)] text-sm">📄</span>
-                          <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-blue-bg)] text-sm">📑</span>
-                        </>
-                      ) : (
-                        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] text-sm"
-                              style={{ background: `var(--c-${statusDe(t.tipo).color}-bg)` }}>
-                          {statusDe(t.tipo).icon}
-                        </span>
-                      )}
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-amber-bg)] text-sm">📄</span>
+                      <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-blue-bg)] text-sm">📑</span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{t.titulo}</p>
+                      <p className="truncate font-semibold">{l.texto}</p>
                       <p className="text-xs text-[var(--c-text-soft)]">
-                        {fmtData(t.data)}{t.polos?.nome ? ` · ${t.polos.nome}` : ''}
-                        {t.descricao ? ` · ${t.descricao}` : ''}
+                        {fmtData(l.data)} · Aula {l.numeroAula}{l.poloNome ? ` · ${l.poloNome}` : ''}
                       </p>
                     </div>
-                    <StatusBadge status={t.tipo} />
+                    <StatusBadge status="lembrete" />
                   </li>
                 ))}
               </ul>

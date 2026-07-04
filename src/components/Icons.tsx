@@ -13,7 +13,7 @@ const svg = (children: ReactNode, size: number) => (
 export type IconName =
   | 'dashboard' | 'polos' | 'professores' | 'alunos' | 'responsaveis'
   | 'mapeamento' | 'cronograma' | 'materiais' | 'historico'
-  | 'busca' | 'sino' | 'sair' | 'menu'
+  | 'sino' | 'sair' | 'menu'
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   switch (name) {
@@ -68,11 +68,6 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
       return svg(<>
         <circle cx="12" cy="12" r="8.5" />
         <path d="M12 7.5V12l3 2" />
-      </>, size)
-    case 'busca':
-      return svg(<>
-        <circle cx="11" cy="11" r="6.5" />
-        <path d="m20 20-3.6-3.6" />
       </>, size)
     case 'sino':
       return svg(<>

@@ -5,21 +5,20 @@ import { DataTable, type Column } from '../../components/DataTable'
 import { CalendarMonth, type CalendarItem } from '../../components/CalendarMonth'
 import { Drawer, Field, ConfirmModal, StatusBadge } from '../../components/ui'
 import { useToast } from '../../components/Toast'
-import { fmtData } from '../../lib/format'
+import { fmtData, subtrairDias } from '../../lib/format'
 import { statusDe } from '../../lib/status'
-import type { CronogramaItem, Evento, EventoTipo, HistoricoAula, Polo, Professor } from '../../lib/types'
+import type { CronogramaItem, HistoricoAula, Polo, Professor } from '../../lib/types'
 
 const AULA_VAZIA = {
   polo_id: '', numero_aula: 1, data: '', professor_id: '', observacoes: '',
   status: 'agendada' as CronogramaItem['status'],
+  lembrete_dias_antes: '', lembrete_texto: '',
 }
-const EVENTO_VAZIO = {
-  titulo: '', data: '', tipo: 'preparo' as EventoTipo, polo_id: '', descricao: '',
-}
+
+const OPCOES_LEMBRETE = [1, 2, 3, 5, 7, 10, 14]
 
 export default function Cronograma() {
   const [itens, setItens] = useState<CronogramaItem[]>([])
-  const [eventos, setEventos] = useState<Evento[]>([])
   const [historico, setHistorico] = useState<HistoricoAula[]>([])
   const [polos, setPolos] = useState<Pick<Polo, 'id' | 'nome'>[]>([])
   const [professores, setProfessores] = useState<Pick<Professor, 'id' | 'nome'>[]>([])
@@ -32,31 +31,20 @@ export default function Cronograma() {
   const [filtroPolo, setFiltroPolo] = useState('')
   const [filtroProfessor, setFiltroProfessor] = useState('')
 
-  // Drawer de aula agendada
   const [aulaDrawer, setAulaDrawer] = useState(false)
   const [editandoAula, setEditandoAula] = useState<CronogramaItem | null>(null)
   const [aula, setAula] = useState(AULA_VAZIA)
   const [aulaErros, setAulaErros] = useState<Record<string, string>>({})
 
-  // Drawer de evento
-  const [eventoDrawer, setEventoDrawer] = useState(false)
-  const [editandoEvento, setEditandoEvento] = useState<Evento | null>(null)
-  const [evento, setEvento] = useState(EVENTO_VAZIO)
-  const [eventoErros, setEventoErros] = useState<Record<string, string>>({})
-
   const [salvando, setSalvando] = useState(false)
   const [aulaExcluir, setAulaExcluir] = useState<CronogramaItem | null>(null)
-  const [eventoExcluir, setEventoExcluir] = useState<Evento | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
     setErro(null)
-    const [itensRes, eventosRes, histRes, polosRes, profRes] = await Promise.all([
+    const [itensRes, histRes, polosRes, profRes] = await Promise.all([
       supabase.from('cronograma')
         .select('*, polos(nome), professores(nome)')
-        .order('data', { ascending: true }),
-      supabase.from('eventos')
-        .select('*, polos(nome)')
         .order('data', { ascending: true }),
       supabase.from('historico_aulas')
         .select('id, polo_id, numero_aula, professor_nome, data_hora, polos(nome)')
@@ -64,10 +52,9 @@ export default function Cronograma() {
       supabase.from('polos').select('id, nome').eq('status', 'ativo').order('nome'),
       supabase.from('professores').select('id, nome').eq('ativo', true).order('nome'),
     ])
-    if (itensRes.error || eventosRes.error) setErro('Não foi possível carregar o cronograma.')
+    if (itensRes.error) setErro('Não foi possível carregar o cronograma.')
     else {
       setItens((itensRes.data ?? []) as unknown as CronogramaItem[])
-      setEventos((eventosRes.data ?? []) as unknown as Evento[])
       setHistorico((histRes.data ?? []) as unknown as HistoricoAula[])
     }
     setPolos((polosRes.data ?? []) as Pick<Polo, 'id' | 'nome'>[])
@@ -77,15 +64,18 @@ export default function Cronograma() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  // ---- Aula agendada ----
-  const abrirNovaAula = () => {
-    setEditandoAula(null); setAula(AULA_VAZIA); setAulaErros({}); setAulaDrawer(true)
+  const abrirNovaAula = (dataPreenchida?: string) => {
+    setEditandoAula(null)
+    setAula({ ...AULA_VAZIA, data: dataPreenchida ?? '' })
+    setAulaErros({}); setAulaDrawer(true)
   }
   const abrirEdicaoAula = (c: CronogramaItem) => {
     setEditandoAula(c)
     setAula({
       polo_id: c.polo_id, numero_aula: c.numero_aula, data: c.data,
       professor_id: c.professor_id ?? '', observacoes: c.observacoes ?? '', status: c.status,
+      lembrete_dias_antes: c.lembrete_dias_antes != null ? String(c.lembrete_dias_antes) : '',
+      lembrete_texto: c.lembrete_texto ?? '',
     })
     setAulaErros({}); setAulaDrawer(true)
   }
@@ -93,6 +83,9 @@ export default function Cronograma() {
     const erros: Record<string, string> = {}
     if (!aula.polo_id) erros.polo_id = 'Selecione o polo.'
     if (!aula.data) erros.data = 'Informe a data da aula.'
+    if (aula.lembrete_dias_antes && !aula.lembrete_texto.trim()) {
+      erros.lembrete_texto = 'Diga o que deve ser lembrado.'
+    }
     setAulaErros(erros)
     if (Object.keys(erros).length) return
     setSalvando(true)
@@ -100,6 +93,8 @@ export default function Cronograma() {
       polo_id: aula.polo_id, numero_aula: aula.numero_aula, data: aula.data,
       professor_id: aula.professor_id || null,
       observacoes: aula.observacoes.trim() || null, status: aula.status,
+      lembrete_dias_antes: aula.lembrete_dias_antes ? Number(aula.lembrete_dias_antes) : null,
+      lembrete_texto: aula.lembrete_dias_antes ? aula.lembrete_texto.trim() || null : null,
     }
     const { error } = editandoAula
       ? await supabase.from('cronograma').update(payload).eq('id', editandoAula.id)
@@ -119,54 +114,12 @@ export default function Cronograma() {
     setAulaExcluir(null); carregar()
   }
 
-  // ---- Evento ----
-  const abrirNovoEvento = () => {
-    setEditandoEvento(null); setEvento(EVENTO_VAZIO); setEventoErros({}); setEventoDrawer(true)
-  }
-  const abrirEdicaoEvento = (ev: Evento) => {
-    setEditandoEvento(ev)
-    setEvento({
-      titulo: ev.titulo, data: ev.data, tipo: ev.tipo,
-      polo_id: ev.polo_id ?? '', descricao: ev.descricao ?? '',
-    })
-    setEventoErros({}); setEventoDrawer(true)
-  }
-  const salvarEvento = async () => {
-    const erros: Record<string, string> = {}
-    if (!evento.titulo.trim()) erros.titulo = 'Informe o título do evento.'
-    if (!evento.data) erros.data = 'Informe a data do evento.'
-    setEventoErros(erros)
-    if (Object.keys(erros).length) return
-    setSalvando(true)
-    const payload = {
-      titulo: evento.titulo.trim(), data: evento.data, tipo: evento.tipo,
-      polo_id: evento.polo_id || null, descricao: evento.descricao.trim() || null,
-    }
-    const { error } = editandoEvento
-      ? await supabase.from('eventos').update(payload).eq('id', editandoEvento.id)
-      : await supabase.from('eventos').insert(payload)
-    setSalvando(false)
-    if (error) { toast.error('Erro ao salvar o evento.'); return }
-    toast.success(editandoEvento ? 'Evento atualizado.' : 'Evento criado.')
-    setEventoDrawer(false); carregar()
-  }
-  const excluirEvento = async () => {
-    if (!eventoExcluir) return
-    setSalvando(true)
-    const { error } = await supabase.from('eventos').delete().eq('id', eventoExcluir.id)
-    setSalvando(false)
-    if (error) { toast.error('Erro ao excluir o evento.'); return }
-    toast.success('Evento excluído.')
-    setEventoExcluir(null); setEventoDrawer(false); carregar()
-  }
-
-  // ---- Filtros ----
   const passaPolo = (poloId: string | null) => !filtroPolo || poloId === filtroPolo
 
   const aulasFiltradas = itens.filter((c) =>
     passaPolo(c.polo_id) && (!filtroProfessor || c.professor_id === filtroProfessor))
 
-  // ---- Itens do calendário: aulas agendadas + realizadas + eventos ----
+  // Itens do calendário: aulas agendadas + aulas realizadas + lembretes (calculados a partir das aulas)
   const calendarItems: CalendarItem[] = [
     ...aulasFiltradas.map((c): CalendarItem => ({
       id: `aula-${c.id}`,
@@ -186,15 +139,15 @@ export default function Cronograma() {
         icon: '✓',
         onClick: () => navigate(`/admin/historico/${h.id}`),
       })),
-    ...eventos
-      .filter((ev) => !filtroPolo || ev.polo_id === filtroPolo || ev.polo_id === null)
-      .map((ev): CalendarItem => ({
-        id: `evt-${ev.id}`,
-        data: ev.data,
-        titulo: ev.titulo,
-        color: statusDe(ev.tipo).color,
-        icon: statusDe(ev.tipo).icon,
-        onClick: () => abrirEdicaoEvento(ev),
+    ...aulasFiltradas
+      .filter((c) => c.lembrete_dias_antes != null)
+      .map((c): CalendarItem => ({
+        id: `lembrete-${c.id}`,
+        data: subtrairDias(c.data, c.lembrete_dias_antes!),
+        titulo: `${c.lembrete_texto || 'Lembrete'} (Aula ${c.numero_aula})`,
+        color: statusDe('lembrete').color,
+        icon: statusDe('lembrete').icon,
+        onClick: () => abrirEdicaoAula(c),
       })),
   ]
 
@@ -204,6 +157,14 @@ export default function Cronograma() {
     { key: 'numero_aula', header: 'Aula', sortable: true, render: (c) => `Aula ${c.numero_aula}` },
     { key: 'professor', header: 'Professor', render: (c) => c.professores?.nome ?? '—' },
     { key: 'status', header: 'Status', sortable: true, render: (c) => <StatusBadge status={c.status} /> },
+    {
+      key: 'lembrete', header: 'Lembrete',
+      render: (c) => c.lembrete_dias_antes != null
+        ? <span className="text-xs text-[var(--c-text-soft)]">
+            {c.lembrete_texto || 'Lembrete'} · {c.lembrete_dias_antes}d antes
+          </span>
+        : '—',
+    },
     {
       key: 'acoes', header: '',
       render: (c) => (
@@ -251,10 +212,7 @@ export default function Cronograma() {
                 onClick={() => setVisao('lista')} aria-pressed={visao === 'lista'}>
           📋 Lista de aulas
         </button>
-        <div className="ml-auto flex gap-2">
-          <button className="btn btn-ghost" onClick={abrirNovoEvento}>+ Novo evento</button>
-          <button className="btn btn-primary" onClick={abrirNovaAula}>+ Agendar aula</button>
-        </div>
+        <button className="btn btn-primary ml-auto" onClick={() => abrirNovaAula()}>+ Agendar aula</button>
       </div>
 
       {visao === 'calendario' ? (
@@ -265,13 +223,16 @@ export default function Cronograma() {
             <div className="ml-auto flex flex-wrap items-center gap-3 text-xs text-[var(--c-text-soft)]">
               <span className="flex items-center gap-1"><span className="badge badge--blue !px-1.5 !py-0">◷</span> Agendada</span>
               <span className="flex items-center gap-1"><span className="badge badge--green !px-1.5 !py-0">✓</span> Realizada</span>
-              <span className="flex items-center gap-1"><span className="badge badge--amber !px-1.5 !py-0">📄</span> Evento</span>
+              <span className="flex items-center gap-1"><span className="badge badge--amber !px-1.5 !py-0">📄</span> Lembrete</span>
             </div>
           </div>
+          <p className="text-xs text-[var(--c-text-soft)]">
+            Clique em qualquer dia do calendário para agendar uma aula nessa data.
+          </p>
           {loading ? (
             <div className="card"><div className="skeleton h-[480px] !rounded-xl" /></div>
           ) : (
-            <CalendarMonth items={calendarItems} />
+            <CalendarMonth items={calendarItems} onDayClick={(dataISO) => abrirNovaAula(dataISO)} />
           )}
         </>
       ) : (
@@ -287,7 +248,7 @@ export default function Cronograma() {
           empty={{
             icon: '📅', title: 'Nenhuma aula agendada',
             message: 'Agende as aulas dos polos para acompanhar o cronograma geral.',
-            action: <button className="btn btn-primary" onClick={abrirNovaAula}>Agendar aula</button>,
+            action: <button className="btn btn-primary" onClick={() => abrirNovaAula()}>Agendar aula</button>,
           }}
         />
       )}
@@ -345,66 +306,31 @@ export default function Cronograma() {
             <textarea rows={3} value={aula.observacoes}
                       onChange={(e) => setAula((f) => ({ ...f, observacoes: e.target.value }))} />
           </Field>
-        </div>
-      </Drawer>
 
-      {/* Drawer: evento */}
-      <Drawer
-        open={eventoDrawer}
-        title={editandoEvento ? 'Editar evento' : 'Novo evento'}
-        onClose={() => setEventoDrawer(false)}
-        footer={
-          <>
-            {editandoEvento && (
-              <button className="btn btn-ghost mr-auto text-[var(--c-danger)]"
-                      onClick={() => setEventoExcluir(editandoEvento)}>
-                Excluir
-              </button>
-            )}
-            <button className="btn btn-ghost" onClick={() => setEventoDrawer(false)}>Cancelar</button>
-            <button className="btn btn-primary" onClick={salvarEvento} disabled={salvando}>
-              {salvando ? 'Salvando…' : 'Salvar'}
-            </button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-4">
-          <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
-            Use eventos para lembretes que não são aulas — por exemplo,
-            <strong> preparar documentos alguns dias antes da aula</strong>, reuniões
-            ou entregas. Eles aparecem no calendário junto com as aulas.
-          </p>
-          <Field label="Título" required error={eventoErros.titulo}>
-            <input value={evento.titulo} aria-invalid={!!eventoErros.titulo}
-                   placeholder="Ex.: Preparar documentos da Aula 5"
-                   onChange={(e) => setEvento((f) => ({ ...f, titulo: e.target.value }))} />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Data" required error={eventoErros.data}>
-              <input type="date" value={evento.data} aria-invalid={!!eventoErros.data}
-                     onChange={(e) => setEvento((f) => ({ ...f, data: e.target.value }))} />
-            </Field>
-            <Field label="Tipo">
-              <select value={evento.tipo}
-                      onChange={(e) => setEvento((f) => ({ ...f, tipo: e.target.value as EventoTipo }))}>
-                <option value="preparo">Preparação de documentos</option>
-                <option value="reuniao">Reunião</option>
-                <option value="entrega">Entrega</option>
-                <option value="geral">Outro</option>
-              </select>
-            </Field>
+          <div className="rounded-lg border border-[var(--c-border)] p-3">
+            <p className="mb-2 text-sm font-semibold">📄 Lembrete (opcional)</p>
+            <p className="mb-3 text-xs text-[var(--c-text-soft)]">
+              Ex.: lembrar 2 dias antes de organizar os materiais. O lembrete
+              aparece sozinho no calendário na data calculada.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Dias antes da aula">
+                <select value={aula.lembrete_dias_antes}
+                        onChange={(e) => setAula((f) => ({ ...f, lembrete_dias_antes: e.target.value }))}>
+                  <option value="">Sem lembrete</option>
+                  {OPCOES_LEMBRETE.map((n) => (
+                    <option key={n} value={n}>{n} dia{n > 1 ? 's' : ''} antes</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="O que lembrar" error={aulaErros.lembrete_texto}>
+                <input value={aula.lembrete_texto} placeholder="Ex.: Organizar materiais"
+                       disabled={!aula.lembrete_dias_antes}
+                       aria-invalid={!!aulaErros.lembrete_texto}
+                       onChange={(e) => setAula((f) => ({ ...f, lembrete_texto: e.target.value }))} />
+              </Field>
+            </div>
           </div>
-          <Field label="Polo (opcional)">
-            <select value={evento.polo_id}
-                    onChange={(e) => setEvento((f) => ({ ...f, polo_id: e.target.value }))}>
-              <option value="">Nenhum / geral</option>
-              {polos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            </select>
-          </Field>
-          <Field label="Descrição">
-            <textarea rows={3} value={evento.descricao}
-                      onChange={(e) => setEvento((f) => ({ ...f, descricao: e.target.value }))} />
-          </Field>
         </div>
       </Drawer>
 
@@ -417,15 +343,6 @@ export default function Cronograma() {
         loading={salvando}
         onConfirm={excluirAula}
         onClose={() => setAulaExcluir(null)}
-      />
-      <ConfirmModal
-        open={!!eventoExcluir}
-        title="Excluir evento"
-        message={<>Excluir o evento <strong>{eventoExcluir?.titulo}</strong>?</>}
-        confirmLabel="Excluir"
-        loading={salvando}
-        onConfirm={excluirEvento}
-        onClose={() => setEventoExcluir(null)}
       />
     </div>
   )

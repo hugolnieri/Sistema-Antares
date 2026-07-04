@@ -85,14 +85,16 @@ create table if not exists materiais (
 );
 
 create table if not exists cronograma (
-  id           uuid primary key default gen_random_uuid(),
-  polo_id      uuid not null references polos(id) on delete cascade,
-  numero_aula  int  not null check (numero_aula between 1 and 18),
-  data         date not null,
-  professor_id uuid references professores(id) on delete set null,
-  observacoes  text,
-  status       text not null default 'agendada' check (status in ('agendada','concluida','cancelada')),
-  created_at   timestamptz not null default now()
+  id                  uuid primary key default gen_random_uuid(),
+  polo_id             uuid not null references polos(id) on delete cascade,
+  numero_aula         int  not null check (numero_aula between 1 and 18),
+  data                date not null,
+  professor_id        uuid references professores(id) on delete set null,
+  observacoes         text,
+  status              text not null default 'agendada' check (status in ('agendada','concluida','cancelada')),
+  lembrete_dias_antes int,   -- ex.: 2 = lembrar 2 dias antes da aula
+  lembrete_texto      text, -- ex.: "Organizar materiais"
+  created_at          timestamptz not null default now()
 );
 
 create table if not exists historico_aulas (
@@ -107,20 +109,6 @@ create table if not exists historico_aulas (
   criado_por        text not null default 'professor',
   created_at        timestamptz not null default now()
 );
-
--- Eventos do cronograma (preparação de documentos, reuniões, entregas…),
--- independentes das aulas — aparecem no calendário junto com as aulas.
-create table if not exists eventos (
-  id          uuid primary key default gen_random_uuid(),
-  titulo      text not null,
-  data        date not null,
-  tipo        text not null default 'geral'
-              check (tipo in ('preparo','reuniao','entrega','geral')),
-  polo_id     uuid references polos(id) on delete cascade,
-  descricao   text,
-  created_at  timestamptz not null default now()
-);
-create index if not exists idx_eventos_data on eventos(data);
 
 create table if not exists presencas (
   id           uuid primary key default gen_random_uuid(),
@@ -171,7 +159,7 @@ declare t text;
 begin
   foreach t in array array['polos','professores','professor_polos','alunos','responsaveis',
                            'aluno_responsaveis','materiais','cronograma','historico_aulas',
-                           'presencas','fotos_aula','alunos_sugeridos','eventos']
+                           'presencas','fotos_aula','alunos_sugeridos']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists admin_all on %I', t);

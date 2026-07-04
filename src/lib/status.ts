@@ -27,11 +27,8 @@ export const STATUS: Record<string, StatusDef> = {
   pendente:   { label: 'Pendente',   color: 'amber', icon: '◐' },
   aprovado:   { label: 'Aprovado',   color: 'green', icon: '✓' },
   recusado:   { label: 'Recusado',   color: 'red',   icon: '✕' },
-  // Tipos de evento do cronograma
-  preparo:    { label: 'Preparação', color: 'amber', icon: '📄' },
-  reuniao:    { label: 'Reunião',    color: 'blue',  icon: '👥' },
-  entrega:    { label: 'Entrega',    color: 'red',   icon: '📦' },
-  geral:      { label: 'Evento',     color: 'gray',  icon: '📌' },
+  // Lembrete vinculado a uma aula (ex.: preparar materiais dias antes)
+  lembrete:   { label: 'Lembrete',   color: 'amber', icon: '📄' },
   // Aula realizada (histórico) exibida no calendário
   realizada:  { label: 'Realizada',  color: 'green', icon: '✓' },
 }

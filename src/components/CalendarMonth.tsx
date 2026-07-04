@@ -30,7 +30,11 @@ const chaveDia = (iso: string): string => {
   return new Date(iso).toLocaleDateString('en-CA')
 }
 
-export function CalendarMonth({ items }: { items: CalendarItem[] }) {
+export function CalendarMonth({ items, onDayClick }: {
+  items: CalendarItem[]
+  /** Chamado ao clicar em qualquer dia (fora dos itens já lançados nele). */
+  onDayClick?: (dataISO: string) => void
+}) {
   const [ref, setRef] = useState(() => {
     const d = new Date()
     return { ano: d.getFullYear(), mes: d.getMonth() }
@@ -104,8 +108,18 @@ export function CalendarMonth({ items }: { items: CalendarItem[] }) {
           const ehHoje = k === hojeKey
           return (
             <div key={i}
+                 role={onDayClick ? 'button' : undefined}
+                 tabIndex={onDayClick ? 0 : undefined}
+                 onClick={() => onDayClick?.(k)}
+                 onKeyDown={(e) => {
+                   if (onDayClick && (e.key === 'Enter' || e.key === ' ')) {
+                     e.preventDefault(); onDayClick(k)
+                   }
+                 }}
+                 title={onDayClick ? 'Agendar aula neste dia' : undefined}
                  className={`min-h-[92px] border-b border-r border-[var(--c-border)] p-1.5 ${
-                   doMes ? '' : 'bg-[#fafbfc]'}`}>
+                   doMes ? '' : 'bg-[#fafbfc]'} ${
+                   onDayClick ? 'cursor-pointer transition-colors hover:bg-[var(--c-primary-soft)]' : ''}`}>
               <div className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full text-xs ${
                 ehHoje ? 'bg-[var(--c-primary)] font-bold text-white'
                        : doMes ? 'text-[var(--c-text)]' : 'text-[var(--c-text-soft)]'}`}>
@@ -115,7 +129,7 @@ export function CalendarMonth({ items }: { items: CalendarItem[] }) {
                 {itensDia.slice(0, 3).map((it) => (
                   <button
                     key={it.id}
-                    onClick={it.onClick}
+                    onClick={(e) => { e.stopPropagation(); it.onClick?.() }}
                     title={it.titulo}
                     className={`flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium ${CHIP[it.color]} ${
                       it.onClick ? 'hover:opacity-80' : 'cursor-default'}`}

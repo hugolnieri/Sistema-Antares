@@ -30,6 +30,13 @@ export const linkDoPolo = (slug: string): string =>
 export const linkWhatsApp = (telefone: string): string =>
   `https://wa.me/55${telefone.replace(/\D/g, '')}`
 
+// Subtrai dias de uma data YYYY-MM-DD sem passar por fuso horário.
+export const subtrairDias = (dataISO: string, dias: number): string => {
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  const d = new Date(ano, mes - 1, dia - dias)
+  return d.toLocaleDateString('en-CA')
+}
+
 interface EnderecoEstruturado {
   logradouro?: string | null
   numero?: string | null

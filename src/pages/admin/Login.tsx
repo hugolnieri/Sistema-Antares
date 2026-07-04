@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, MOCK } from '../../lib/supabase'
 import { Field } from '../../components/ui'
+import { Logo } from '../../components/Logo'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -24,11 +25,15 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#1c2333] p-4">
-      <form onSubmit={entrar} className="card w-full max-w-sm !p-8">
-        <div className="mb-6 text-center">
-          <span className="text-2xl font-bold">✦ Antares</span>
-          <p className="text-sm text-[var(--c-text-soft)]">Acesso administrativo</p>
+    <div className="gradient-hero flex min-h-screen items-center justify-center p-4">
+      <form onSubmit={entrar} className="card w-full max-w-sm !p-8 shadow-xl">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Logo size={72} />
+          <span className="mt-3 text-xl font-bold">Antares</span>
+          <p className="text-xs text-[var(--c-text-soft)]">
+            Centro de Formação de Bombeiros Civis
+          </p>
+          <p className="mt-1 text-sm font-semibold text-[var(--c-text-soft)]">Acesso administrativo</p>
         </div>
         <div className="flex flex-col gap-4">
           <Field label="E-mail" required>

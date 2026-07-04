@@ -1,0 +1,13 @@
+LOGO DA ANTARES
+================
+
+Salve o arquivo da logo (o selo preto "ANTARES — Centro de Formação de
+Bombeiros Civis") exatamente nesta pasta, com este nome:
+
+    public/logo-antares.png
+
+Assim que o arquivo estiver aqui, ele aparece automaticamente no topo do
+sistema e na tela de login. Enquanto não estiver, o sistema mostra um selo
+temporário no lugar.
+
+Dica: uma imagem quadrada (ex.: 512x512) com fundo transparente fica melhor.

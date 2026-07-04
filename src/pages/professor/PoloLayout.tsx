@@ -4,6 +4,7 @@ import {
 } from 'react-router-dom'
 import { poloApi, poloSessao } from '../../lib/poloApi'
 import { EmptyState } from '../../components/ui'
+import { Logo } from '../../components/Logo'
 import type { DadosPolo } from '../../lib/types'
 
 export interface PoloContext {
@@ -53,9 +54,12 @@ export default function PoloLayout() {
     <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col">
       <header className="sticky top-0 z-20 border-b border-[var(--c-border)] bg-white px-4 py-3">
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-[var(--c-text-soft)]">✦ Antares — Professor</p>
-            <p className="font-bold">{sessao.polo.nome}</p>
+          <div className="flex items-center gap-2">
+            <Logo size={36} />
+            <div>
+              <p className="text-xs text-[var(--c-text-soft)]">Antares — Professor</p>
+              <p className="font-bold">{sessao.polo.nome}</p>
+            </div>
           </div>
           <button className="btn btn-ghost !px-3 !py-1 text-xs" onClick={sairParaSenha}>
             Sair

@@ -98,7 +98,7 @@ function embed(db: MockDB, table: string, row: any, sel: string): any {
 
 /* ---------------- Query builder ---------------- */
 
-type Filtro = { op: 'eq' | 'gte'; col: string; val: any }
+type Filtro = { op: 'eq' | 'gte' | 'lte'; col: string; val: any }
 type Modo = 'select' | 'insert' | 'update' | 'delete'
 
 class MockQuery implements PromiseLike<any> {
@@ -120,6 +120,7 @@ class MockQuery implements PromiseLike<any> {
   }
   eq(col: string, val: any) { this.filtros.push({ op: 'eq', col, val }); return this }
   gte(col: string, val: any) { this.filtros.push({ op: 'gte', col, val }); return this }
+  lte(col: string, val: any) { this.filtros.push({ op: 'lte', col, val }); return this }
   order(col: string, opts?: { ascending?: boolean }) {
     this.ordem = { col, asc: opts?.ascending !== false }; return this
   }
@@ -138,8 +139,11 @@ class MockQuery implements PromiseLike<any> {
 
   private aplica(rows: any[]) {
     return rows.filter((r) =>
-      this.filtros.every((f) =>
-        f.op === 'eq' ? r[f.col] === f.val : String(r[f.col] ?? '') >= String(f.val)))
+      this.filtros.every((f) => {
+        if (f.op === 'eq') return r[f.col] === f.val
+        if (f.op === 'gte') return String(r[f.col] ?? '') >= String(f.val)
+        return String(r[f.col] ?? '') <= String(f.val) // lte
+      }))
   }
 
   private async exec(): Promise<any> {

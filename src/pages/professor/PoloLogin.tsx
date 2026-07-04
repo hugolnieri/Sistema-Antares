@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { poloApi, poloSessao } from '../../lib/poloApi'
 import { MOCK } from '../../lib/supabase'
 import { Field } from '../../components/ui'
+import { Logo } from '../../components/Logo'
 
 export default function PoloLogin() {
   const { slug = '' } = useParams()
@@ -40,10 +41,11 @@ export default function PoloLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#1c2333] p-4">
-      <div className="card w-full max-w-sm !p-8">
-        <div className="mb-6 text-center">
-          <span className="text-2xl font-bold">✦ Antares</span>
+    <div className="gradient-hero flex min-h-screen items-center justify-center p-4">
+      <div className="card w-full max-w-sm !p-8 shadow-xl">
+        <div className="mb-6 flex flex-col items-center text-center">
+          <Logo size={64} />
+          <span className="mt-2 text-xl font-bold">Antares</span>
           {poloInvalido ? (
             <p className="mt-3 rounded-lg bg-[var(--c-red-bg)] p-3 text-sm text-[var(--c-red-fg)]">
               Polo não encontrado ou inativo. Confira o link com o administrativo.

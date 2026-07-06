@@ -28,11 +28,11 @@ export default function Chamada() {
   const [salvando, setSalvando] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  // Mensagem automática para o responsável DO POLO — pede os dados do
-  // responsável do aluno, já que o professor não tem mais acesso direto.
+  // Mensagem automática para o contato DO POLO — pede o nome e telefone
+  // do responsável pelo aluno, já que o professor não tem mais acesso direto.
   const mensagemConsultaResponsavel = (nomeAluno: string) =>
-    `Olá! Sou professor(a) no polo ${dados.polo.nome} e preciso dos dados ` +
-    `do responsável do aluno(a) *${nomeAluno}* (nome e telefone) para contato. Pode me ajudar?`
+    `Olá! Sou professor(a) no polo ${dados.polo.nome}. Preciso do nome e ` +
+    `telefone do responsável pelo aluno(a) *${nomeAluno}* para contato. Pode me ajudar?`
 
   const marcar = (alunoId: string, presente: boolean) =>
     setPresencas((p) => ({ ...p, [alunoId]: presente }))

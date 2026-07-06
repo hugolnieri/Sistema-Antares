@@ -198,7 +198,7 @@ export function AdminShell() {
             <button className="icon-btn" aria-label="Alternar tema claro/escuro"
                     title={tema === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
                     onClick={() => setTemaState(alternarTema())}>
-              {tema === 'dark' ? '☀️' : '🌙'}
+              <Icon name={tema === 'dark' ? 'sol' : 'lua'} size={18} />
             </button>
 
             <div className="relative" ref={notifRef}>

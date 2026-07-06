@@ -213,8 +213,13 @@ body {
   border: 2px solid var(--c-surface);
 }
 
-/* ============ LOGO (brasão preto — clareia no tema escuro) ============ */
-:root[data-theme="dark"] .logo-img { filter: invert(1) brightness(1.9) contrast(1.1); }
+/* ============ LOGO (brasão preto sobre disco branco no tema escuro) ============ */
+/* Sem filtro na imagem — inverter/clarear embaçava os traços finos do brasão. */
+:root[data-theme="dark"] .logo-badge {
+  background: #fff;
+  padding: 3px;
+  box-sizing: border-box;
+}
 
 /* ============ GRADIENTE-ASSINATURA (fogo) ============ */
 /* claro: branco → laranja suave → âmbar suave */

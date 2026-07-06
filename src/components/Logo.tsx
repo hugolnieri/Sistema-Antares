@@ -6,15 +6,20 @@ export function Logo({ size = 40 }: { size?: number }) {
   const [erro, setErro] = useState(false)
 
   if (!erro) {
+    // No tema escuro, um disco branco atrás do brasão (que é preto) garante
+    // contraste sem aplicar filtro na imagem — filtro embaçava os traços finos.
     return (
-      <img
-        src="/logo-antares.png"
-        alt="Antares — Centro de Formação de Bombeiros Civis"
-        width={size}
-        height={size}
-        className="logo-img shrink-0 rounded-full object-contain"
-        onError={() => setErro(true)}
-      />
+      <span
+        className="logo-badge inline-flex shrink-0 items-center justify-center rounded-full"
+        style={{ width: size, height: size }}
+      >
+        <img
+          src="/logo-antares.png"
+          alt="Antares — Centro de Formação de Bombeiros Civis"
+          className="h-full w-full rounded-full object-contain"
+          onError={() => setErro(true)}
+        />
+      </span>
     )
   }
 

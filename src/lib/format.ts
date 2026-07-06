@@ -27,8 +27,11 @@ export const gerarSlug = (nome: string): string =>
 export const linkDoPolo = (slug: string): string =>
   `${window.location.origin}/professor/polo/${slug}`
 
-export const linkWhatsApp = (telefone: string): string =>
-  `https://wa.me/55${telefone.replace(/\D/g, '')}`
+export const linkWhatsApp = (telefone: string, mensagem?: string): string => {
+  const numero = telefone.replace(/\D/g, '')
+  const texto = mensagem ? `?text=${encodeURIComponent(mensagem)}` : ''
+  return `https://wa.me/55${numero}${texto}`
+}
 
 // Subtrai dias de uma data YYYY-MM-DD sem passar por fuso horário.
 export const subtrairDias = (dataISO: string, dias: number): string => {

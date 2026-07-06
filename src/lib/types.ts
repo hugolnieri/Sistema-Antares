@@ -140,12 +140,6 @@ export interface AlunoChamada {
   nome: string
   contato: string | null
   observacoes: string | null
-  responsaveis: {
-    nome: string
-    telefone: string | null
-    parentesco: string | null
-    observacoes: string | null
-  }[]
 }
 
 export interface MaterialChamada {
@@ -156,7 +150,7 @@ export interface MaterialChamada {
 }
 
 export interface DadosPolo {
-  polo: { id: string; nome: string }
+  polo: { id: string; nome: string; contato: string | null }
   alunos: AlunoChamada[]
   materiais: MaterialChamada[]
 }

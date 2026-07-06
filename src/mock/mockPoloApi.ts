@@ -59,17 +59,6 @@ export const mockPoloApi = {
         nome: a.nome,
         contato: a.contato,
         observacoes: a.observacoes,
-        responsaveis: db.aluno_responsaveis
-          .filter((ar) => ar.aluno_id === a.id)
-          .map((ar) => {
-            const r = db.responsaveis.find((x) => x.id === ar.responsavel_id)
-            return {
-              nome: r?.nome ?? '—',
-              telefone: r?.telefone ?? null,
-              parentesco: ar.parentesco,
-              observacoes: r?.observacoes ?? null,
-            }
-          }),
       }))
     const materiais = db.materiais
       .filter((m) => m.status === 'ativo')
@@ -82,7 +71,7 @@ export const mockPoloApi = {
           ? (storageUrl('materiais', m.arquivo_path) ?? pdfDemoUrl(m.titulo))
           : null,
       }))
-    return { polo: { id: polo.id, nome: polo.nome }, alunos, materiais }
+    return { polo: { id: polo.id, nome: polo.nome, contato: polo.contato ?? null }, alunos, materiais }
   },
 
   async salvarChamada(

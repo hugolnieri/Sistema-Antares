@@ -81,7 +81,7 @@ async function requirePolo(token: string | null) {
   if (!payload) return null;
   const { data: polo } = await supabase
     .from("polos")
-    .select("id, nome, slug, token_version, status")
+    .select("id, nome, slug, contato, token_version, status")
     .eq("id", payload.poloId)
     .single();
   if (!polo || polo.status !== "ativo" || polo.token_version !== payload.tv) return null;
@@ -118,7 +118,7 @@ async function acaoDados(token: string) {
   const [alunosRes, materiaisRes] = await Promise.all([
     supabase
       .from("alunos")
-      .select("id, nome, contato, observacoes, aluno_responsaveis(parentesco, responsaveis(nome, telefone, observacoes))")
+      .select("id, nome, contato, observacoes")
       .eq("polo_id", polo.id).eq("status", "ativo").order("nome"),
     supabase
       .from("materiais")
@@ -131,12 +131,6 @@ async function acaoDados(token: string) {
     nome: a.nome,
     contato: a.contato,
     observacoes: a.observacoes,
-    responsaveis: (a.aluno_responsaveis ?? []).map((ar: any) => ({
-      nome: ar.responsaveis?.nome,
-      telefone: ar.responsaveis?.telefone,
-      parentesco: ar.parentesco,
-      observacoes: ar.responsaveis?.observacoes,
-    })),
   }));
 
   // URLs assinadas dos PDFs (válidas por 12h, mesmo TTL da sessão)
@@ -152,7 +146,7 @@ async function acaoDados(token: string) {
     }),
   );
 
-  return json({ polo: { id: polo.id, nome: polo.nome }, alunos, materiais });
+  return json({ polo: { id: polo.id, nome: polo.nome, contato: polo.contato }, alunos, materiais });
 }
 
 // Valida a lista de fotos; retorna a Response de erro ou null se ok.

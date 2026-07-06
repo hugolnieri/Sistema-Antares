@@ -2,10 +2,9 @@ import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { poloApi } from '../../lib/poloApi'
 import { linkWhatsApp } from '../../lib/format'
-import { Field, Modal, EmptyState } from '../../components/ui'
+import { Field, EmptyState } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { usePolo } from './PoloLayout'
-import type { AlunoChamada } from '../../lib/types'
 
 const MAX_FOTO_BYTES = 5 * 1024 * 1024
 const MAX_FOTOS = 10
@@ -27,8 +26,13 @@ export default function Chamada() {
   const [novoExtra, setNovoExtra] = useState('')
   const [erros, setErros] = useState<Record<string, string>>({})
   const [salvando, setSalvando] = useState(false)
-  const [alunoDetalhe, setAlunoDetalhe] = useState<AlunoChamada | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  // Mensagem automática para o responsável DO POLO — pede os dados do
+  // responsável do aluno, já que o professor não tem mais acesso direto.
+  const mensagemConsultaResponsavel = (nomeAluno: string) =>
+    `Olá! Sou professor(a) no polo ${dados.polo.nome} e preciso dos dados ` +
+    `do responsável do aluno(a) *${nomeAluno}* (nome e telefone) para contato. Pode me ajudar?`
 
   const marcar = (alunoId: string, presente: boolean) =>
     setPresencas((p) => ({ ...p, [alunoId]: presente }))
@@ -203,15 +207,21 @@ export default function Chamada() {
               return (
                 <li key={a.id}
                     className="flex flex-col gap-2.5 border-b border-[var(--c-border)] p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="min-w-0 truncate font-semibold">{a.nome}</p>
-                    {a.responsaveis.length > 0 && (
-                      <button
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold">{a.nome}</p>
+                      {a.observacoes && (
+                        <p className="mt-0.5 text-xs text-[var(--c-amber-fg)]">⚠️ {a.observacoes}</p>
+                      )}
+                    </div>
+                    {dados.polo.contato && (
+                      <a
+                        href={linkWhatsApp(dados.polo.contato, mensagemConsultaResponsavel(a.nome))}
+                        target="_blank" rel="noreferrer"
                         className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
-                        onClick={() => setAlunoDetalhe(a)}
                       >
-                        👪 Responsável
-                      </button>
+                        💬 Consultar responsáveis
+                      </a>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -353,47 +363,6 @@ export default function Chamada() {
               onClick={finalizarAula} disabled={salvando}>
         {salvando ? 'Finalizando…' : 'Finalizar aula'}
       </button>
-
-      {/* Modal de responsáveis (somente leitura) */}
-      <Modal
-        open={!!alunoDetalhe}
-        title={`Responsáveis — ${alunoDetalhe?.nome ?? ''}`}
-        onClose={() => setAlunoDetalhe(null)}
-      >
-        <div className="flex flex-col gap-4">
-          {alunoDetalhe?.observacoes && (
-            <p className="rounded-lg bg-[var(--c-amber-bg)] p-3 text-sm text-[var(--c-amber-fg)]">
-              <strong>Observações do aluno:</strong> {alunoDetalhe.observacoes}
-            </p>
-          )}
-          {(alunoDetalhe?.responsaveis ?? []).map((r, i) => (
-            <div key={i} className="rounded-lg border border-[var(--c-border)] p-3">
-              <p className="font-bold">{r.nome}</p>
-              {r.parentesco && (
-                <p className="text-sm text-[var(--c-text-soft)]">{r.parentesco}</p>
-              )}
-              {r.telefone ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold">{r.telefone}</span>
-                  <a href={linkWhatsApp(r.telefone)} target="_blank" rel="noreferrer"
-                     className="btn btn-ghost !px-3 !py-1 text-xs">
-                    💬 WhatsApp
-                  </a>
-                  <a href={`tel:${r.telefone.replace(/\D/g, '')}`}
-                     className="btn btn-ghost !px-3 !py-1 text-xs">
-                    📞 Ligar
-                  </a>
-                </div>
-              ) : (
-                <p className="mt-1 text-sm text-[var(--c-text-soft)]">Sem telefone cadastrado.</p>
-              )}
-              {r.observacoes && (
-                <p className="mt-2 text-sm text-[var(--c-text-soft)]">{r.observacoes}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      </Modal>
     </div>
   )
 }

@@ -52,7 +52,7 @@ export default function PoloLayout() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col">
-      <header className="sticky top-0 z-20 border-b border-[var(--c-border)] bg-white px-4 py-3">
+      <header className="sticky top-0 z-20 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Logo size={36} />

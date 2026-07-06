@@ -74,6 +74,30 @@ export const mockPoloApi = {
     return { polo: { id: polo.id, nome: polo.nome, contato: polo.contato ?? null }, alunos, materiais }
   },
 
+  async solicitarContato(token: string, alunoId: string, alunoNome: string): Promise<{ ok: boolean }> {
+    await sleep(200)
+    const db = loadDB()
+    const [poloId, tv] = token.split('.')
+    const polo = db.polos.find((p) => p.id === poloId)
+    if (!polo || polo.status !== 'ativo' || String(polo.token_version) !== tv) {
+      throw new Error('Sessão expirada. Digite a senha novamente.')
+    }
+    const aluno = db.alunos.find((a) => a.id === alunoId && a.polo_id === polo.id)
+    const nome = aluno?.nome ?? alunoNome
+    const jaExiste = db.solicitacoes_contato.some(
+      (s) => s.polo_id === polo.id && s.status === 'pendente' &&
+        (aluno ? s.aluno_id === aluno.id : s.aluno_nome === nome),
+    )
+    if (!jaExiste) {
+      db.solicitacoes_contato.push({
+        id: uuid(), polo_id: polo.id, aluno_id: aluno?.id ?? null,
+        aluno_nome: nome, status: 'pendente', created_at: new Date().toISOString(),
+      })
+      saveDB(db)
+    }
+    return { ok: true }
+  },
+
   async salvarChamada(
     token: string,
     dados: {

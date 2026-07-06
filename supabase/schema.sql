@@ -128,6 +128,18 @@ create table if not exists alunos_sugeridos (
   created_at   timestamptz not null default now()
 );
 
+-- Pedidos de contato: o professor, na chamada, solicita ao administrativo os
+-- dados do responsável por um aluno. Vira notificação/pendência no admin.
+create table if not exists solicitacoes_contato (
+  id          uuid primary key default gen_random_uuid(),
+  polo_id     uuid not null references polos(id) on delete cascade,
+  aluno_id    uuid references alunos(id) on delete set null,
+  aluno_nome  text not null,
+  status      text not null default 'pendente' check (status in ('pendente','atendida')),
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_solicitacoes_status on solicitacoes_contato(status);
+
 -- Fotos: o banco guarda só metadados. Arquivo fica no Storage
 -- (e futuramente no SharePoint — use url_externa para isso).
 create table if not exists fotos_aula (
@@ -158,7 +170,7 @@ declare t text;
 begin
   foreach t in array array['polos','professores','professor_polos','alunos','responsaveis',
                            'aluno_responsaveis','materiais','cronograma','historico_aulas',
-                           'presencas','fotos_aula','alunos_sugeridos']
+                           'presencas','fotos_aula','alunos_sugeridos','solicitacoes_contato']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists admin_all on %I', t);

@@ -4,7 +4,8 @@ import { supabase } from '../../lib/supabase'
 import { KpiCard, StatusBadge, EmptyState } from '../../components/ui'
 import { statusDe } from '../../lib/status'
 import { fmtData, fmtDataHora, subtrairDias } from '../../lib/format'
-import type { CronogramaItem, HistoricoAula } from '../../lib/types'
+import { useToast } from '../../components/Toast'
+import type { CronogramaItem, HistoricoAula, SolicitacaoContato } from '../../lib/types'
 
 interface Kpis {
   polos: number
@@ -26,7 +27,9 @@ export default function Dashboard() {
   const [ultimas, setUltimas] = useState<HistoricoAula[]>([])
   const [aulasHoje, setAulasHoje] = useState<CronogramaItem[]>([])
   const [lembretes, setLembretes] = useState<Lembrete[]>([])
+  const [pedidos, setPedidos] = useState<SolicitacaoContato[]>([])
   const [erro, setErro] = useState('')
+  const toast = useToast()
 
   const agora = new Date()
   const hoje = agora.toLocaleDateString('en-CA')
@@ -54,8 +57,12 @@ export default function Dashboard() {
       supabase.from('cronograma')
         .select('*, polos(nome), professores(nome)')
         .gte('data', hoje).lte('data', em30).order('data'),
-    ]).then(([p, a, pr, ch, ult, prox]) => {
+      supabase.from('solicitacoes_contato')
+        .select('*, polos(nome)')
+        .eq('status', 'pendente').order('created_at', { ascending: false }),
+    ]).then(([p, a, pr, ch, ult, prox, sol]) => {
       if (ult.error) { setErro('Não foi possível carregar os dados.'); return }
+      setPedidos((sol.data ?? []) as unknown as SolicitacaoContato[])
       setKpis({
         polos: p.count ?? 0, alunos: a.count ?? 0,
         professores: pr.count ?? 0, chamadasMes: ch.count ?? 0,
@@ -83,6 +90,14 @@ export default function Dashboard() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const lembretesHoje = lembretes.filter((l) => l.data === hoje)
+
+  const atenderPedido = async (id: string) => {
+    setPedidos((ps) => ps.filter((p) => p.id !== id)) // otimista
+    const { error } = await supabase
+      .from('solicitacoes_contato').update({ status: 'atendida' }).eq('id', id)
+    if (error) toast.error('Erro ao marcar como atendida.')
+    else toast.success('Pedido de contato marcado como atendido.')
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,14 +130,14 @@ export default function Dashboard() {
             Sua agenda de hoje
           </p>
           {aulasHoje.length === 0 && lembretesHoje.length === 0 ? (
-            <p className="rounded-lg bg-white/60 p-3 text-sm text-[var(--c-text-soft)]">
+            <p className="rounded-lg bg-[var(--c-surface)]/70 p-3 text-sm text-[var(--c-text-soft)]">
               Nenhuma aula ou lembrete marcado para hoje.
             </p>
           ) : (
             <div className="flex gap-2 overflow-x-auto pb-1">
               {aulasHoje.map((c) => (
                 <Link key={c.id} to="/admin/cronograma"
-                      className="flex shrink-0 items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm shadow-sm hover:bg-white">
+                      className="flex shrink-0 items-center gap-2 rounded-full border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-sm shadow-sm hover:opacity-90">
                   <span className={`badge badge--${statusDe(c.status).color} !px-1.5 !py-0`}>
                     {statusDe(c.status).icon}
                   </span>
@@ -132,7 +147,7 @@ export default function Dashboard() {
               ))}
               {lembretesHoje.map((l) => (
                 <Link key={l.id} to="/admin/cronograma"
-                      className="flex shrink-0 items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm shadow-sm hover:bg-white">
+                      className="flex shrink-0 items-center gap-2 rounded-full border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-1.5 text-sm shadow-sm hover:opacity-90">
                   <span className={`badge badge--${statusDe('lembrete').color} !px-1.5 !py-0`}>
                     {statusDe('lembrete').icon}
                   </span>
@@ -143,6 +158,34 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Pedidos de contato dos professores (pendências acionáveis) */}
+      {pedidos.length > 0 && (
+        <div className="card !p-0 border-l-4 !border-l-[var(--c-primary)]">
+          <div className="flex items-center gap-2 p-4">
+            <h2 className="font-bold">📇 Pedidos de contato dos professores</h2>
+            <span className="badge badge--amber">{pedidos.length} pendente{pedidos.length === 1 ? '' : 's'}</span>
+          </div>
+          <ul className="border-t border-[var(--c-border)]">
+            {pedidos.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{s.aluno_nome}</p>
+                  <p className="text-xs text-[var(--c-text-soft)]">
+                    Polo {s.polos?.nome ?? '—'} · pedido em {fmtData(s.created_at)}
+                  </p>
+                </div>
+                <Link to="/admin/alunos" className="btn btn-ghost !px-3 !py-1 text-xs">
+                  Ver alunos
+                </Link>
+                <button className="btn btn-primary !px-3 !py-1 text-xs" onClick={() => atenderPedido(s.id)}>
+                  Marcar como atendida
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>

@@ -27,6 +27,7 @@ export const STATUS: Record<string, StatusDef> = {
   pendente:   { label: 'Pendente',   color: 'amber', icon: '◐' },
   aprovado:   { label: 'Aprovado',   color: 'green', icon: '✓' },
   recusado:   { label: 'Recusado',   color: 'red',   icon: '✕' },
+  atendida:   { label: 'Atendida',   color: 'green', icon: '✓' },
   // Lembrete vinculado a uma aula (ex.: preparar materiais dias antes)
   lembrete:   { label: 'Lembrete',   color: 'amber', icon: '📄' },
   // Aula realizada (histórico) exibida no calendário

@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%E2%9C%A6%3C/text%3E%3C/svg%3E" />
     <title>Antares — Gestão dos Polos</title>
+    <script>
+      // Aplica o tema salvo antes do render para não piscar (no-flash)
+      (function () {
+        try {
+          if (localStorage.getItem('antares-theme') === 'dark')
+            document.documentElement.setAttribute('data-theme', 'dark')
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -118,7 +118,7 @@ export function CalendarMonth({ items, onDayClick }: {
                  }}
                  title={onDayClick ? 'Agendar aula neste dia' : undefined}
                  className={`min-h-[92px] border-b border-r border-[var(--c-border)] p-1.5 ${
-                   doMes ? '' : 'bg-[#fafbfc]'} ${
+                   doMes ? '' : 'bg-[var(--c-bg)]'} ${
                    onDayClick ? 'cursor-pointer transition-colors hover:bg-[var(--c-primary-soft)]' : ''}`}>
               <div className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full text-xs ${
                 ehHoje ? 'bg-[var(--c-primary)] font-bold text-white'

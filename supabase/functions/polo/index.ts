@@ -111,6 +111,33 @@ async function acaoLogin(slug: string, senha: string) {
   return json({ token, polo: { id: polo.polo_id, nome: polo.nome } });
 }
 
+// Professor solicita os dados do responsável de um aluno — vira pendência no admin.
+async function acaoSolicitarContato(token: string, alunoId?: string, alunoNome?: string) {
+  const polo = await requirePolo(token);
+  if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
+
+  let nome = (alunoNome ?? "").trim();
+  let idValido: string | null = null;
+  if (alunoId) {
+    const { data: aluno } = await supabase
+      .from("alunos").select("id, nome").eq("id", alunoId).eq("polo_id", polo.id).single();
+    if (aluno) { idValido = aluno.id; nome = aluno.nome; }
+  }
+  if (!nome) return json({ error: "Aluno inválido" }, 400);
+
+  // Evita duplicar: se já houver pendência para o mesmo aluno, não cria outra.
+  const { count } = await supabase
+    .from("solicitacoes_contato").select("id", { count: "exact", head: true })
+    .eq("polo_id", polo.id).eq("status", "pendente")
+    .eq(idValido ? "aluno_id" : "aluno_nome", idValido ?? nome);
+  if ((count ?? 0) === 0) {
+    await supabase.from("solicitacoes_contato").insert({
+      polo_id: polo.id, aluno_id: idValido, aluno_nome: nome, status: "pendente",
+    });
+  }
+  return json({ ok: true });
+}
+
 async function acaoDados(token: string) {
   const polo = await requirePolo(token);
   if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
@@ -315,6 +342,8 @@ Deno.serve(async (req) => {
       case "info":  return await acaoInfo(body.slug);
       case "login": return await acaoLogin(body.slug, body.senha);
       case "dados": return await acaoDados(body.token);
+      case "solicitarContato":
+        return await acaoSolicitarContato(body.token, body.alunoId, body.alunoNome);
       default:      return json({ error: "Ação desconhecida" }, 400);
     }
   } catch (e) {

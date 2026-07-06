@@ -79,7 +79,7 @@ export function Drawer({
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={title}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-[520px] flex-col bg-white shadow-xl">
+      <div className="absolute right-0 top-0 flex h-full w-full max-w-[520px] flex-col bg-[var(--c-surface)] shadow-xl">
         <div className="flex items-center justify-between border-b border-[var(--c-border)] p-4">
           <h2 className="text-lg font-bold">{title}</h2>
           <button className="btn btn-ghost !px-2 !py-1" onClick={onClose} aria-label="Fechar">✕</button>

@@ -29,6 +29,9 @@ const realPoloApi = {
 
   dados: (token: string) => post({ action: 'dados', token }) as Promise<DadosPolo>,
 
+  solicitarContato: (token: string, alunoId: string, alunoNome: string) =>
+    post({ action: 'solicitarContato', token, alunoId, alunoNome }) as Promise<{ ok: boolean }>,
+
   async salvarChamada(
     token: string,
     dados: {

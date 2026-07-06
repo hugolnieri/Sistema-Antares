@@ -30,6 +30,16 @@ export interface AlunoSugerido {
   polos?: { nome: string } | null
 }
 
+export interface SolicitacaoContato {
+  id: string
+  polo_id: string
+  aluno_id: string | null
+  aluno_nome: string
+  status: 'pendente' | 'atendida'
+  created_at: string
+  polos?: { nome: string } | null
+}
+
 export interface Professor {
   id: string
   nome: string

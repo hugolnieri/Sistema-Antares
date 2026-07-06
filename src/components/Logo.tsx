@@ -12,7 +12,7 @@ export function Logo({ size = 40 }: { size?: number }) {
         alt="Antares — Centro de Formação de Bombeiros Civis"
         width={size}
         height={size}
-        className="shrink-0 rounded-full object-contain"
+        className="logo-img shrink-0 rounded-full object-contain"
         onError={() => setErro(true)}
       />
     )
@@ -21,7 +21,7 @@ export function Logo({ size = 40 }: { size?: number }) {
   // Fallback: selo circular preto (substituído pela logo real quando adicionada)
   return (
     <div
-      className="flex shrink-0 items-center justify-center rounded-full bg-[#1a1d23] font-black text-white"
+      className="flex shrink-0 items-center justify-center rounded-full bg-[var(--brand-graphite)] font-black text-white"
       style={{ width: size, height: size, fontSize: size * 0.4 }}
       aria-label="Antares"
       title="Adicione a logo em public/logo-antares.png"

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { Logo } from './Logo'
 import { Icon, type IconName } from './Icons'
 import { fmtData, subtrairDias } from '../lib/format'
+import { alternarTema, getTema, type Tema } from '../lib/theme'
 
 /* ---------- Guarda de autenticação ---------- */
 
@@ -60,6 +61,7 @@ export function AdminShell() {
   const [notifsAbertas, setNotifsAbertas] = useState(false)
   const [notifs, setNotifs] = useState<Notif[]>([])
   const [email, setEmail] = useState('')
+  const [tema, setTemaState] = useState<Tema>(getTema())
   const location = useLocation()
   const navigate = useNavigate()
   const notifRef = useRef<HTMLDivElement>(null)
@@ -92,8 +94,18 @@ export function AdminShell() {
       supabase.from('cronograma')
         .select('id, numero_aula, data, lembrete_dias_antes, lembrete_texto, polos(nome)')
         .gte('data', hoje).lte('data', em30).order('data'),
-    ]).then(([sug, cr]) => {
+      supabase.from('solicitacoes_contato')
+        .select('id, aluno_nome, polos(nome)')
+        .eq('status', 'pendente').order('created_at', { ascending: false }),
+    ]).then(([sug, cr, sol]) => {
       const lista: Notif[] = []
+      for (const s of (sol.data ?? []) as any[]) {
+        lista.push({
+          id: `sol-${s.id}`, icon: '📇',
+          texto: `Pedido de contato: ${s.aluno_nome} · ${s.polos?.nome ?? ''}`,
+          to: '/admin/alunos',
+        })
+      }
       if ((sug.count ?? 0) > 0) {
         lista.push({
           id: 'sug', icon: '📥',
@@ -153,7 +165,7 @@ export function AdminShell() {
       )}
 
       {/* Menu lateral */}
-      <aside className={`fixed z-40 flex h-screen w-[248px] flex-col border-r border-[var(--c-border)] bg-white transition-transform lg:sticky lg:top-0 lg:translate-x-0 ${
+      <aside className={`fixed z-40 flex h-screen w-[248px] flex-col border-r border-[var(--c-border)] bg-[var(--c-surface)] transition-transform lg:sticky lg:top-0 lg:translate-x-0 ${
         menuAberto ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="brand-stripe h-1 w-full" />
@@ -174,7 +186,7 @@ export function AdminShell() {
 
       {/* Área principal */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-[var(--c-border)] bg-white px-4 sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-[var(--c-border)] bg-[var(--c-surface)] px-4 sm:px-6">
           <span className="lg:hidden">
             <button className="icon-btn" aria-label="Abrir menu" onClick={() => setMenuAberto(true)}>
               <Icon name="menu" />
@@ -183,13 +195,19 @@ export function AdminShell() {
           <h1 className="text-lg font-bold">{titulo}</h1>
 
           <div className="ml-auto flex items-center gap-2">
+            <button className="icon-btn" aria-label="Alternar tema claro/escuro"
+                    title={tema === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                    onClick={() => setTemaState(alternarTema())}>
+              {tema === 'dark' ? '☀️' : '🌙'}
+            </button>
+
             <div className="relative" ref={notifRef}>
               <button className="icon-btn" aria-label="Notificações" onClick={() => setNotifsAbertas((v) => !v)}>
                 <Icon name="sino" size={18} />
                 {notifs.length > 0 && <span className="dot">{notifs.length}</span>}
               </button>
               {notifsAbertas && (
-                <div className="absolute right-0 top-12 z-40 w-[320px] max-w-[90vw] overflow-hidden rounded-xl border border-[var(--c-border)] bg-white shadow-xl">
+                <div className="absolute right-0 top-12 z-40 w-[320px] max-w-[90vw] overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] shadow-xl">
                   <div className="border-b border-[var(--c-border)] p-3 font-bold">Notificações</div>
                   {notifs.length === 0 ? (
                     <p className="p-4 text-sm text-[var(--c-text-soft)]">Nada de novo por aqui.</p>

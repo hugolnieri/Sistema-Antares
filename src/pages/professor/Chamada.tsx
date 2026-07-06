@@ -37,6 +37,12 @@ export default function Chamada() {
   const marcar = (alunoId: string, presente: boolean) =>
     setPresencas((p) => ({ ...p, [alunoId]: presente }))
 
+  // Registra o pedido de contato no admin (não bloqueia a abertura do WhatsApp).
+  const consultarResponsaveis = (alunoId: string, alunoNome: string) => {
+    poloApi.solicitarContato(token, alunoId, alunoNome).catch(() => {})
+    toast.info('O administrativo foi avisado do seu pedido de contato.')
+  }
+
   const mudarProfessor = (i: number, valor: string) =>
     setProfessores((ps) => ps.map((p, j) => (j === i ? valor : p)))
 
@@ -218,6 +224,7 @@ export default function Chamada() {
                       <a
                         href={linkWhatsApp(dados.polo.contato, mensagemConsultaResponsavel(a.nome))}
                         target="_blank" rel="noreferrer"
+                        onClick={() => consultarResponsaveis(a.id, a.nome)}
                         className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
                       >
                         💬 Consultar responsáveis

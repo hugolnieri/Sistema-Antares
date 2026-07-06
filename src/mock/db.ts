@@ -15,6 +15,7 @@ export interface MockDB {
   presencas: any[]
   fotos_aula: any[]
   alunos_sugeridos: any[]
+  solicitacoes_contato: any[]
 }
 
 const KEY = 'antares-mock-db'
@@ -136,6 +137,9 @@ function seed(): MockDB {
     alunos_sugeridos: [
       { id: uuid(), polo_id: p1, historico_id: h1, nome: 'Sofia Andrade', status: 'pendente', created_at: diasAtras(2) },
     ],
+    solicitacoes_contato: [
+      { id: uuid(), polo_id: p2, aluno_id: al[5], aluno_nome: 'Felipe Martins', status: 'pendente', created_at: diasAtras(1) },
+    ],
   }
 }
 
@@ -146,6 +150,7 @@ export function loadDB(): MockDB {
       const db = JSON.parse(raw) as MockDB
       // Migração: dados salvos antes de novas tabelas/colunas existirem
       if (!db.alunos_sugeridos) db.alunos_sugeridos = []
+      if (!db.solicitacoes_contato) db.solicitacoes_contato = []
       delete (db as any).eventos
       for (const c of db.cronograma) {
         if (c.lembrete_dias_antes === undefined) c.lembrete_dias_antes = null

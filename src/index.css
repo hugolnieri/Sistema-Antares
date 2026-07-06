@@ -13,28 +13,64 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 
-  /* ---- Identidade visual Antares ---- */
-  --brand-blue:   #83a2db;   /* periwinkle */
-  --brand-coral:  #fd8e8c;   /* salmão */
-  --brand-yellow: #ffce87;   /* dourado */
-  --brand-gray:   #dbdbdb;
-  --brand-navy:   #1e2733;   /* o "Black" da marca */
+  /* ---- Paleta Antares — Centro de Formação de Bombeiros Civis ---- */
+  --brand-charcoal: #0b0d0f;   /* preto carvão  */
+  --brand-graphite: #1a1d21;   /* grafite técnico */
+  --brand-red:      #c1121f;   /* vermelho emergência (cor da marca) */
+  --brand-red-dark: #780000;   /* vermelho escuro (autoridade/hover) */
+  --brand-orange:   #f97316;   /* laranja fogo (energia/destaque) */
+  --brand-amber:    #f59e0b;   /* âmbar segurança (alertas) */
+  --brand-ice:      #f4f4f5;   /* cinza gelo */
 
-  --c-bg: #f5f6f9;
+  /* ---- Semânticos: TEMA CLARO (padrão) ---- */
+  color-scheme: light;
+  --c-bg: #f4f4f5;
   --c-surface: #ffffff;
-  --c-border: #e6e8ee;
-  --c-text: #1e2733;
-  --c-text-soft: #6b7280;
-  --c-primary: #4f72bd;        /* azul da marca em tom acessível (texto branco) */
-  --c-primary-hover: #41609f;
-  --c-primary-soft: #eef2fb;   /* tinte do azul para hover/realce */
-  --c-danger: #e5534b;         /* coral em tom acessível */
+  --c-border: #e4e4e7;
+  --c-hover: #fafafa;
+  --c-text: #1a1d21;
+  --c-text-soft: #52525b;
+  --c-primary: #c1121f;
+  --c-primary-hover: #780000;
+  --c-primary-soft: #fdeaea;   /* tinte do vermelho para realces/hover */
+  --c-danger: #c1121f;
+  --c-danger-hover: #780000;
 
-  --c-green-bg: #e5f6ec;  --c-green-fg: #147a3d;
-  --c-amber-bg: #fff2d6;  --c-amber-fg: #8a5a00;   /* alinhado ao amarelo da marca */
-  --c-red-bg:   #ffe6e5;  --c-red-fg:   #c0403a;   /* alinhado ao coral da marca */
-  --c-gray-bg:  #eef0f3;  --c-gray-fg:  #6b7280;
-  --c-blue-bg:  #eaf0fb;  --c-blue-fg:  #3a5aa8;   /* alinhado ao periwinkle */
+  --c-green-bg:  #e6f6ec;  --c-green-fg:  #147a3d;
+  --c-amber-bg:  #fef3c7;  --c-amber-fg:  #92600a;
+  --c-red-bg:    #fde7e8;  --c-red-fg:    #b0101b;
+  --c-gray-bg:   #efeff1;  --c-gray-fg:   #52525b;
+  --c-blue-bg:   #e6eefb;  --c-blue-fg:   #2952a3;
+  --c-orange-bg: #fff0e6;  --c-orange-fg: #c2410c;
+
+  --shadow-primary: rgba(193, 18, 31, 0.5);
+  --skeleton-a: #e7e7ea;   --skeleton-b: #f3f3f5;
+}
+
+/* ---- Semânticos: TEMA ESCURO ---- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-bg: #0b0d0f;
+  --c-surface: #1a1d21;
+  --c-border: #2b2f36;
+  --c-hover: rgba(255, 255, 255, 0.04);
+  --c-text: #f4f4f5;
+  --c-text-soft: #a1a1aa;
+  --c-primary: #d61f2b;
+  --c-primary-hover: #ef3340;
+  --c-primary-soft: rgba(214, 31, 43, 0.16);
+  --c-danger: #d61f2b;
+  --c-danger-hover: #ef3340;
+
+  --c-green-bg:  rgba(34, 197, 94, 0.16);  --c-green-fg:  #4ade80;
+  --c-amber-bg:  rgba(245, 158, 11, 0.16); --c-amber-fg:  #fbbf24;
+  --c-red-bg:    rgba(214, 31, 43, 0.22);  --c-red-fg:    #f87171;
+  --c-gray-bg:   rgba(255, 255, 255, 0.08);--c-gray-fg:   #a1a1aa;
+  --c-blue-bg:   rgba(96, 165, 250, 0.16); --c-blue-fg:   #7cb0fb;
+  --c-orange-bg: rgba(249, 115, 22, 0.16); --c-orange-fg: #fb923c;
+
+  --shadow-primary: rgba(0, 0, 0, 0.6);
+  --skeleton-a: #22262c;   --skeleton-b: #2c3138;
 }
 
 body {
@@ -62,7 +98,7 @@ body {
 .btn-ghost { background: var(--c-surface); color: var(--c-text); border-color: var(--c-border); }
 .btn-ghost:hover:not(:disabled) { background: var(--c-gray-bg); }
 .btn-danger { background: var(--c-danger); color: #fff; }
-.btn-danger:hover:not(:disabled) { background: #b32828; }
+.btn-danger:hover:not(:disabled) { background: var(--c-danger-hover); }
 .btn-lg { padding: var(--space-3) var(--space-6); font-size: 16px; }
 
 /* ============ BADGES DE STATUS ============ */
@@ -71,11 +107,12 @@ body {
   padding: 2px 10px; border-radius: 999px;
   font-size: 12px; font-weight: 600; line-height: 1.6;
 }
-.badge--green { background: var(--c-green-bg); color: var(--c-green-fg); }
-.badge--amber { background: var(--c-amber-bg); color: var(--c-amber-fg); }
-.badge--red   { background: var(--c-red-bg);   color: var(--c-red-fg); }
-.badge--gray  { background: var(--c-gray-bg);  color: var(--c-gray-fg); }
-.badge--blue  { background: var(--c-blue-bg);  color: var(--c-blue-fg); }
+.badge--green  { background: var(--c-green-bg);  color: var(--c-green-fg); }
+.badge--amber  { background: var(--c-amber-bg);  color: var(--c-amber-fg); }
+.badge--red    { background: var(--c-red-bg);    color: var(--c-red-fg); }
+.badge--gray   { background: var(--c-gray-bg);   color: var(--c-gray-fg); }
+.badge--blue   { background: var(--c-blue-bg);   color: var(--c-blue-fg); }
+.badge--orange { background: var(--c-orange-bg); color: var(--c-orange-fg); }
 
 /* ============ CARDS / SUPERFÍCIES ============ */
 .card {
@@ -97,6 +134,7 @@ body {
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   background: var(--c-surface);
+  color: var(--c-text);
   font-size: 14px;
 }
 /* iOS: sem o appearance:none o input[type=date] ganha largura intrínseca
@@ -129,12 +167,12 @@ body {
   border-bottom: 1px solid var(--c-border);
   vertical-align: middle;
 }
-.data-table tbody tr:hover { background: #fafbfc; }
+.data-table tbody tr:hover { background: var(--c-hover); }
 
 /* ============ SKELETON (loading) ============ */
 .skeleton {
   height: 14px; border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, #eceef1 25%, #f6f7f9 50%, #eceef1 75%);
+  background: linear-gradient(90deg, var(--skeleton-a) 25%, var(--skeleton-b) 50%, var(--skeleton-a) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
@@ -151,16 +189,17 @@ body {
 .side-item:hover { color: var(--c-primary); background: var(--c-primary-soft); }
 .side-item.is-active {
   background: var(--c-primary); color: #fff; font-weight: 600;
-  box-shadow: 0 6px 16px -6px rgba(79, 114, 189, 0.7);
+  box-shadow: 0 6px 16px -6px var(--shadow-primary);
 }
 .side-item.is-active:hover { color: #fff; }
 
-/* ============ BOTÕES DE ÍCONE (busca, notificações) ============ */
+/* ============ BOTÕES DE ÍCONE (tema, notificações) ============ */
 .icon-btn {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center;
   width: 38px; height: 38px; border-radius: 999px;
   border: 1px solid var(--c-border); background: var(--c-surface);
+  color: var(--c-text);
   cursor: pointer; font-size: 16px;
   transition: background 0.15s;
 }
@@ -169,22 +208,29 @@ body {
   position: absolute; top: 6px; right: 6px;
   min-width: 16px; height: 16px; padding: 0 4px;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 999px; background: var(--c-danger);
+  border-radius: 999px; background: var(--c-primary);
   color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
   border: 2px solid var(--c-surface);
 }
 
-/* ============ GRADIENTE-ASSINATURA (identidade Antares) ============ */
-/* azul → coral → amarelo → branco, como na identidade visual */
+/* ============ LOGO (brasão preto — clareia no tema escuro) ============ */
+:root[data-theme="dark"] .logo-img { filter: invert(1) brightness(1.9) contrast(1.1); }
+
+/* ============ GRADIENTE-ASSINATURA (fogo) ============ */
+/* claro: branco → laranja suave → âmbar suave */
 .gradient-hero {
   background: linear-gradient(108deg,
-    #9fb6e4 0%, #c7b6d8 34%, #fbb4b6 62%, #ffd9a6 84%, #fff7ec 100%);
+    #ffffff 0%, #fff1e6 46%, #ffe4c4 78%, #ffe9d0 100%);
+}
+:root[data-theme="dark"] .gradient-hero {
+  background: linear-gradient(108deg,
+    #14171b 0%, #1f2329 58%, #2a1618 100%);
 }
 .gradient-soft {
-  background: linear-gradient(135deg, #eef2fb 0%, #fdeef0 55%, #fff5e6 100%);
+  background: linear-gradient(135deg, #fdeaea 0%, #fff1e6 55%, #fff7e6 100%);
 }
-/* faixa fina do gradiente da marca (assinatura no topo da sidebar) */
+/* faixa fina da paleta (assinatura no topo da sidebar) */
 .brand-stripe {
   background: linear-gradient(90deg,
-    var(--brand-blue) 0%, var(--brand-coral) 55%, var(--brand-yellow) 100%);
+    var(--brand-red-dark) 0%, var(--brand-red) 40%, var(--brand-orange) 75%, var(--brand-amber) 100%);
 }

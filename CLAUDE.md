@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-07** — Importacao em massa de alunos via planilha Excel (904b58e)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (bdd6b5f)
 - **2026-07-07** — Popup de motivo ao consultar responsaveis; reabre chamada pendente ao recarregar (349f5fb)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (92b6006)
 - **2026-07-07** — Tema claro/escuro fica restrito ao painel administrativo (30998ea)
-- **2026-07-07** — chore: update recent commits in CLAUDE.md (1d7acb3)
 
 (Updated automatically by git post-commit hook)
 

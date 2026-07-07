@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-07** — Link do polo automatico, coluna Pix e linha inteira clicavel no historico (ea77feb)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (8ca7f6a)
 - **2026-07-07** — fix: use ES modules in update-claude-md.js script (9aa0b4a)
 - **2026-07-07** — feat: auto-update CLAUDE.md with recent commits via git hook (fce693d)
 - **2026-07-07** — Ciclos de aulas + novo fluxo de chamada do professor (56784ee)
-- **2026-07-06** — Corrige logo borrada no tema escuro e usa icone de linha no toggle de tema (e02eda5)
 
 (Updated automatically by git post-commit hook)
 

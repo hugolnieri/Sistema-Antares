@@ -2,10 +2,12 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { poloApi, poloSessao } from '../../lib/poloApi'
 import { MOCK } from '../../lib/supabase'
+import { useTemaClaroForcado } from '../../lib/theme'
 import { Field } from '../../components/ui'
 import { Logo } from '../../components/Logo'
 
 export default function PoloLogin() {
+  useTemaClaroForcado()
   const { slug = '' } = useParams()
   const navigate = useNavigate()
   const [nomePolo, setNomePolo] = useState<string | null>(null)

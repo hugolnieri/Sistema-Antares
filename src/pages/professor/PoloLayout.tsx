@@ -3,6 +3,7 @@ import {
   NavLink, Outlet, useNavigate, useOutletContext, useParams,
 } from 'react-router-dom'
 import { poloApi, poloSessao } from '../../lib/poloApi'
+import { useTemaClaroForcado } from '../../lib/theme'
 import { EmptyState } from '../../components/ui'
 import { Logo } from '../../components/Logo'
 import type { DadosPolo } from '../../lib/types'
@@ -17,6 +18,7 @@ export interface PoloContext {
 export const usePolo = () => useOutletContext<PoloContext>()
 
 export default function PoloLayout() {
+  useTemaClaroForcado()
   const { slug = '' } = useParams()
   const navigate = useNavigate()
   const [dados, setDados] = useState<DadosPolo | null>(null)

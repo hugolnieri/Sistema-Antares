@@ -161,6 +161,18 @@ export interface MaterialChamada {
   url: string | null
 }
 
+// Detalhe completo de uma chamada — usado para retomar uma aula "pendente de
+// fotos" (ex.: o professor recarregou a página) com a presença já marcada
+// re-hidratada na tela.
+export interface ChamadaDetalhe {
+  historicoId: string
+  numeroAula: number
+  dataAula: string // YYYY-MM-DD
+  professoresNomes: string[]
+  relatorio: string | null
+  presencas: { alunoId: string; presente: boolean }[]
+}
+
 // Uma chamada já registrada no ciclo atual do polo.
 // - temFotos = false -> pendente: continua selecionável para anexar fotos depois
 // - temFotos = true  -> concluída: bloqueada no seletor

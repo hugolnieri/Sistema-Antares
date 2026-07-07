@@ -7,6 +7,8 @@
 //   login   { slug, senha }          -> { token, polo }
 //   dados   { token }                -> { polo, alunos (+responsáveis), materiais (URLs assinadas) }
 //   chamada FormData: token, dados(JSON), fotos[] -> { historicoId }
+//   obterChamada        { token, historicoId }                    -> retoma chamada pendente
+//   atualizarPresenca   { token, historicoId, alunoId, presente } -> auto-save por aluno
 //
 // Secrets necessários: POLO_TOKEN_SECRET (defina com `supabase secrets set`).
 // SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são injetados automaticamente.
@@ -188,6 +190,60 @@ async function acaoDados(token: string) {
     polo: { id: polo.id, nome: polo.nome, contato: polo.contato, ciclo: polo.ciclo_atual },
     alunos, materiais, chamadas,
   });
+}
+
+// Retoma uma chamada "pendente de fotos" — usado ao selecionar de novo a aula,
+// inclusive depois de recarregar a página (a presença já marcada volta pra tela).
+async function acaoObterChamada(token: string, historicoId?: string) {
+  const polo = await requirePolo(token);
+  if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
+  if (!historicoId) return json({ error: "Registro de aula não encontrado" }, 404);
+
+  const { data: hist } = await supabase
+    .from("historico_aulas")
+    .select("id, numero_aula, data_hora, professores_nomes, relatorio, presencas(aluno_id, presente)")
+    .eq("id", historicoId).eq("polo_id", polo.id).single();
+  if (!hist) return json({ error: "Registro de aula não encontrado" }, 404);
+
+  return json({
+    historicoId: hist.id,
+    numeroAula: hist.numero_aula,
+    dataAula: String(hist.data_hora).slice(0, 10),
+    professoresNomes: hist.professores_nomes ?? [],
+    relatorio: hist.relatorio,
+    presencas: (hist.presencas ?? []).map((p: any) => ({ alunoId: p.aluno_id, presente: p.presente })),
+  });
+}
+
+// Salva a presença de UM aluno na hora (sem esperar um botão de "salvar
+// chamada" — cada toggle do professor já fica gravado). A chamada em si
+// (historico_aulas) já precisa existir — é criada no 1º toggle via acaoChamada.
+async function acaoAtualizarPresenca(
+  token: string, historicoId?: string, alunoId?: string, presente?: boolean,
+) {
+  const polo = await requirePolo(token);
+  if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
+  if (!historicoId || !alunoId || typeof presente !== "boolean") {
+    return json({ error: "Dados inválidos" }, 400);
+  }
+
+  const { data: hist } = await supabase
+    .from("historico_aulas").select("id, polo_id").eq("id", historicoId).single();
+  if (!hist || hist.polo_id !== polo.id) {
+    return json({ error: "Registro de aula não encontrado" }, 404);
+  }
+  const { data: aluno } = await supabase
+    .from("alunos").select("id").eq("id", alunoId).eq("polo_id", polo.id).single();
+  if (!aluno) return json({ error: "Aluno inválido" }, 400);
+
+  const { error } = await supabase
+    .from("presencas")
+    .upsert(
+      { historico_id: historicoId, aluno_id: alunoId, presente },
+      { onConflict: "historico_id,aluno_id" },
+    );
+  if (error) return json({ error: "Erro ao salvar a presença" }, 500);
+  return json({ ok: true });
 }
 
 // O ciclo se encerra quando TODAS as 18 aulas estão concluídas (com foto).
@@ -389,6 +445,10 @@ Deno.serve(async (req) => {
       case "dados": return await acaoDados(body.token);
       case "solicitarContato":
         return await acaoSolicitarContato(body.token, body.alunoId, body.alunoNome);
+      case "obterChamada":
+        return await acaoObterChamada(body.token, body.historicoId);
+      case "atualizarPresenca":
+        return await acaoAtualizarPresenca(body.token, body.historicoId, body.alunoId, body.presente);
       default:      return json({ error: "Ação desconhecida" }, 400);
     }
   } catch (e) {

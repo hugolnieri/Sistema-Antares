@@ -4,7 +4,7 @@
 
 import { loadDB, saveDB, uuid } from './db'
 import { pdfDemoUrl, storageUrl } from './mockClient'
-import type { DadosPolo, PoloSessao } from '../lib/types'
+import type { ChamadaDetalhe, DadosPolo, PoloSessao } from '../lib/types'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const MAX_FOTO_BYTES = 5 * 1024 * 1024
@@ -123,6 +123,56 @@ export const mockPoloApi = {
       })
       saveDB(db)
     }
+    return { ok: true }
+  },
+
+  // Retoma uma chamada "pendente de fotos" — usado ao selecionar de novo a
+  // aula, inclusive depois de recarregar a página.
+  async obterChamada(token: string, historicoId: string): Promise<ChamadaDetalhe> {
+    await sleep(200)
+    const db = loadDB()
+    const [poloId, tv] = token.split('.')
+    const polo = db.polos.find((p) => p.id === poloId)
+    if (!polo || polo.status !== 'ativo' || String(polo.token_version) !== tv) {
+      throw new Error('Sessão expirada. Digite a senha novamente.')
+    }
+    const hist = db.historico_aulas.find((h) => h.id === historicoId && h.polo_id === polo.id)
+    if (!hist) throw new Error('Registro de aula não encontrado')
+    const presencas = db.presencas
+      .filter((p) => p.historico_id === hist.id)
+      .map((p) => ({ alunoId: p.aluno_id, presente: p.presente }))
+    return {
+      historicoId: hist.id,
+      numeroAula: hist.numero_aula,
+      dataAula: hist.data_hora.slice(0, 10),
+      professoresNomes: hist.professores_nomes,
+      relatorio: hist.relatorio,
+      presencas,
+    }
+  },
+
+  // Salva a presença de UM aluno na hora (sem esperar um botão de "salvar
+  // chamada" — cada toggle do professor já fica gravado). A chamada em si
+  // já precisa existir — é criada no 1º toggle via salvarChamada.
+  async atualizarPresenca(
+    token: string, historicoId: string, alunoId: string, presente: boolean,
+  ): Promise<{ ok: boolean }> {
+    await sleep(200)
+    const db = loadDB()
+    const [poloId, tv] = token.split('.')
+    const polo = db.polos.find((p) => p.id === poloId)
+    if (!polo || polo.status !== 'ativo' || String(polo.token_version) !== tv) {
+      throw new Error('Sessão expirada. Digite a senha novamente.')
+    }
+    const hist = db.historico_aulas.find((h) => h.id === historicoId && h.polo_id === polo.id)
+    if (!hist) throw new Error('Registro de aula não encontrado')
+    const aluno = db.alunos.find((a) => a.id === alunoId && a.polo_id === polo.id)
+    if (!aluno) throw new Error('Aluno inválido')
+
+    const existente = db.presencas.find((p) => p.historico_id === historicoId && p.aluno_id === alunoId)
+    if (existente) existente.presente = presente
+    else db.presencas.push({ id: uuid(), historico_id: historicoId, aluno_id: alunoId, presente })
+    saveDB(db)
     return { ok: true }
   },
 

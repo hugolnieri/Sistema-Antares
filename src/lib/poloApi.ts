@@ -2,7 +2,7 @@
 // No modo demonstração, delega para o mock (mesma interface).
 import { SUPABASE_URL, SUPABASE_ANON_KEY, MOCK } from './supabase'
 import { mockPoloApi } from '../mock/mockPoloApi'
-import type { DadosPolo, PoloSessao } from './types'
+import type { ChamadaDetalhe, DadosPolo, PoloSessao } from './types'
 
 const FN_URL = `${SUPABASE_URL}/functions/v1/polo`
 const HEADERS = {
@@ -31,6 +31,17 @@ const realPoloApi = {
 
   solicitarContato: (token: string, alunoId: string, alunoNome: string) =>
     post({ action: 'solicitarContato', token, alunoId, alunoNome }) as Promise<{ ok: boolean }>,
+
+  // Retoma uma chamada "pendente de fotos" (já iniciada, presença já salva)
+  // — usado ao selecionar de novo a aula, inclusive após recarregar a página.
+  obterChamada: (token: string, historicoId: string) =>
+    post({ action: 'obterChamada', token, historicoId }) as Promise<ChamadaDetalhe>,
+
+  // Salva a presença de UM aluno imediatamente (sem esperar um botão de
+  // "salvar chamada"). Se a chamada ainda não existir, ela é criada na hora
+  // (ver `salvarChamada` abaixo, chamado automaticamente no 1º toggle).
+  atualizarPresenca: (token: string, historicoId: string, alunoId: string, presente: boolean) =>
+    post({ action: 'atualizarPresenca', token, historicoId, alunoId, presente }) as Promise<{ ok: boolean }>,
 
   async salvarChamada(
     token: string,

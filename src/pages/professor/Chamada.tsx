@@ -14,9 +14,11 @@ export default function Chamada() {
 
   const hoje = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD no fuso local
   const [numeroAula, setNumeroAula] = useState(0)
-  // Quando != null, a chamada já foi salva (ou é uma aula pendente selecionada):
-  // a tela passa a pedir só as fotos para concluir a aula.
+  // Quando != null, a chamada já existe no servidor: cada presença marcada é
+  // salva na hora (sem botão de "salvar"), e data/professor/relatório ficam
+  // travados (já foram gravados na criação da chamada).
   const [historicoId, setHistoricoId] = useState<string | null>(null)
+  const [carregandoResumo, setCarregandoResumo] = useState(false)
   const [dataAula, setDataAula] = useState(hoje)
   // Padrão: 2 campos de professor (só o 1º é obrigatório)
   const [professores, setProfessores] = useState<string[]>(['', ''])
@@ -26,24 +28,21 @@ export default function Chamada() {
   const [alunosExtras, setAlunosExtras] = useState<string[]>([])
   const [novoExtra, setNovoExtra] = useState('')
   const [erros, setErros] = useState<Record<string, string>>({})
-  const [salvando, setSalvando] = useState(false)
+  // Criando a chamada (1º toggle) trava todos os botões pra evitar criar
+  // duas vezes se o professor clicar em mais de um aluno rapidamente.
+  const [criandoChamada, setCriandoChamada] = useState(false)
+  // Aluno cuja presença está em voo (chamada já existe) — só aquele botão trava.
+  const [pendentes, setPendentes] = useState<Set<string>>(new Set())
+  const [enviandoFotos, setEnviandoFotos] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
-  const modoFotos = historicoId !== null
+  const chamadaIniciada = historicoId !== null
 
   // Mensagem automática para o contato DO POLO — pede o nome e telefone
   // do responsável pelo aluno, já que o professor não tem mais acesso direto.
   const mensagemConsultaResponsavel = (nomeAluno: string) =>
     `Olá! Sou professor(a) no polo ${dados.polo.nome}. Preciso do nome e ` +
     `telefone do responsável pelo aluno(a) *${nomeAluno}* para contato. Pode me ajudar?`
-
-  const alternarPresenca = (alunoId: string) =>
-    setPresencas((p) => {
-      const novo = { ...p }
-      if (novo[alunoId]) delete novo[alunoId]
-      else novo[alunoId] = true
-      return novo
-    })
 
   // Registra o pedido de contato no admin (não bloqueia a abertura do WhatsApp).
   const consultarResponsaveis = (alunoId: string, alunoNome: string) => {
@@ -56,28 +55,55 @@ export default function Chamada() {
 
   const professoresPreenchidos = professores.map((p) => p.trim()).filter(Boolean)
 
-  // Escolher a aula reseta o formulário. Se a aula já tiver uma chamada salva
-  // (pendente de fotos), entra direto no modo de anexar fotos.
-  const selecionarAula = (n: number) => {
-    setNumeroAula(n)
-    setErros({})
+  const limparFormulario = () => {
+    setHistoricoId(null)
+    setDataAula(hoje)
+    setProfessores(['', ''])
     setPresencas({})
-    setFotos([])
     setRelatorio('')
+    setFotos([])
     setAlunosExtras([])
-    const existente = dados.chamadas.find((c) => c.numeroAula === n)
-    setHistoricoId(existente ? existente.historicoId : null)
+    setErros({})
   }
 
-  const limpar = () => {
-    setNumeroAula(0)
-    setHistoricoId(null)
-    setPresencas({})
-    setFotos([])
-    setRelatorio('')
-    setAlunosExtras([])
-    setProfessores(['', ''])
+  // Escolher a aula reseta o formulário. Se a aula já tiver uma chamada em
+  // andamento (pendente de fotos), busca os dados salvos e re-hidrata a tela
+  // — inclusive depois de recarregar a página sem querer.
+  const selecionarAula = async (n: number) => {
+    setNumeroAula(n)
     setErros({})
+    setFotos([])
+    setNovoExtra('')
+    const existente = dados.chamadas.find((c) => c.numeroAula === n)
+
+    if (!existente) {
+      setHistoricoId(null)
+      setDataAula(hoje)
+      setProfessores(['', ''])
+      setPresencas({})
+      setRelatorio('')
+      setAlunosExtras([])
+      return
+    }
+
+    setHistoricoId(existente.historicoId)
+    setCarregandoResumo(true)
+    try {
+      const c = await poloApi.obterChamada(token, existente.historicoId)
+      setDataAula(c.dataAula)
+      setProfessores(c.professoresNomes.length ? c.professoresNomes : ['', ''])
+      setRelatorio(c.relatorio ?? '')
+      setAlunosExtras([])
+      const marcados: Record<string, boolean> = {}
+      for (const p of c.presencas) if (p.presente) marcados[p.alunoId] = true
+      setPresencas(marcados)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao carregar a chamada.')
+      setNumeroAula(0)
+      limparFormulario()
+    } finally {
+      setCarregandoResumo(false)
+    }
   }
 
   const adicionarFotos = (lista: FileList | null) => {
@@ -105,50 +131,66 @@ export default function Chamada() {
     if (fileInput.current) fileInput.current.value = ''
   }
 
-  // Passo 1: salva a presença (foto NÃO é obrigatória). Não sai da tela —
-  // passa para o modo de anexar fotos. O professor pode até fechar o link e
-  // voltar depois: a aula fica "pendente de fotos" e pode ser retomada.
-  const salvarPresenca = async () => {
-    const novosErros: Record<string, string> = {}
-    if (!numeroAula) novosErros.aula = 'Selecione a aula.'
-    if (!dataAula) novosErros.data = 'Informe a data da aula.'
-    if (professoresPreenchidos.length === 0) novosErros.professor = 'Informe ao menos um professor.'
-    if (Object.keys(presencas).length === 0) novosErros.presencas = 'Marque a presença de pelo menos um aluno.'
-    setErros(novosErros)
-    if (Object.keys(novosErros).length) {
-      toast.error('Confira os campos destacados antes de continuar.')
+  // Confirmar/desmarcar presença salva na hora — não existe mais botão de
+  // "salvar chamada". No primeiro toggle de uma aula nova, a chamada é criada
+  // no servidor; nos seguintes, só aquela presença é atualizada.
+  const alternarPresenca = async (alunoId: string) => {
+    const novoValor = !presencas[alunoId]
+    const presencasAntes = presencas
+    const presencasDepois = { ...presencas }
+    if (novoValor) presencasDepois[alunoId] = true
+    else delete presencasDepois[alunoId]
+    setPresencas(presencasDepois)
+
+    if (!historicoId) {
+      if (professoresPreenchidos.length === 0) {
+        setPresencas(presencasAntes)
+        setErros({ professor: 'Informe o professor antes de marcar presença.' })
+        toast.error('Informe o professor antes de marcar presença.')
+        return
+      }
+      setErros({})
+      setCriandoChamada(true)
+      try {
+        const lista = dados.alunos.map((a) => ({
+          alunoId: a.id,
+          presente: presencasDepois[a.id] ?? false,
+        }))
+        const r = await poloApi.salvarChamada(token, {
+          numeroAula,
+          professoresNomes: professoresPreenchidos,
+          dataAula,
+          relatorio: relatorio.trim() || undefined,
+          presencas: lista,
+          alunosExtras: alunosExtras.length ? alunosExtras : undefined,
+        }, [])
+        setHistoricoId(r.historicoId)
+        recarregar() // atualiza a lista de chamadas (a aula vira "pendente de fotos")
+        toast.success('Chamada iniciada — a presença é salva automaticamente.')
+      } catch (e: any) {
+        setPresencas(presencasAntes)
+        toast.error(e.message ?? 'Erro ao salvar a chamada.')
+      } finally {
+        setCriandoChamada(false)
+      }
       return
     }
 
-    setSalvando(true)
+    setPendentes((p) => new Set(p).add(alunoId))
     try {
-      // Aluno sem marcação explícita entra como ausente
-      const lista = dados.alunos.map((a) => ({
-        alunoId: a.id,
-        presente: presencas[a.id] ?? false,
-      }))
-      const r = await poloApi.salvarChamada(token, {
-        numeroAula,
-        professoresNomes: professoresPreenchidos,
-        dataAula,
-        relatorio: relatorio.trim() || undefined,
-        presencas: lista,
-        alunosExtras: alunosExtras.length ? alunosExtras : undefined,
-      }, [])
-      setHistoricoId(r.historicoId)
-      recarregar() // atualiza a lista de chamadas (a aula vira "pendente de fotos")
-      toast.success('Chamada salva! Agora anexe as fotos para concluir a aula.')
+      await poloApi.atualizarPresenca(token, historicoId, alunoId, novoValor)
     } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao salvar a chamada.')
+      setPresencas(presencasAntes)
+      toast.error(e.message ?? 'Erro ao salvar a presença.')
     } finally {
-      setSalvando(false)
+      setPendentes((p) => { const n = new Set(p); n.delete(alunoId); return n })
     }
   }
 
-  // Passo 2: envia as fotos e conclui a aula.
+  // Envia as fotos e conclui a aula.
   const enviarFotos = async () => {
     if (!historicoId || fotos.length === 0) return
-    setSalvando(true)
+    setEnviandoFotos(true)
     try {
       const r = await poloApi.adicionarFotos(token, historicoId, fotos)
       const enviadas = fotos.length - (r.fotosErro?.length ?? 0)
@@ -162,23 +204,24 @@ export default function Chamada() {
       } else {
         toast.success('Aula concluída! Fotos enviadas.')
       }
-      limpar()
+      setNumeroAula(0)
+      limparFormulario()
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao enviar as fotos.')
     } finally {
-      setSalvando(false)
+      setEnviandoFotos(false)
     }
   }
 
   const presentesCount = dados.alunos.filter((a) => presencas[a.id]).length
+  const camposTravados = chamadaIniciada // data/professor/relatório/extras não mudam mais
 
   return (
     <div className="flex flex-col gap-4 pb-6">
       {/* Passo 0: escolher a aula (o resto do formulário só aparece depois) */}
       <div className="card flex flex-col gap-2">
-        <Field label="Aula" required error={erros.aula}>
-          <select value={numeroAula} aria-invalid={!!erros.aula}
-                  className="!py-3 !text-lg"
+        <Field label="Aula" required>
+          <select value={numeroAula} className="!py-3 !text-lg"
                   onChange={(e) => selecionarAula(Number(e.target.value))}>
             <option value={0}>Selecione…</option>
             {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => {
@@ -203,70 +246,26 @@ export default function Chamada() {
         <div className="card">
           <EmptyState
             icon="📋" title="Selecione a aula"
-            message="Escolha a aula acima para registrar a presença."
+            message="Escolha a aula acima para começar a marcar presença."
           />
         </div>
-      ) : modoFotos ? (
-        /* Modo fotos — a aula é concluída quando as fotos são enviadas */
+      ) : carregandoResumo ? (
         <div className="card flex flex-col gap-3">
-          <h2 className="font-bold">📷 Fotos da Aula {numeroAula}</h2>
-          <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
-            ✓ Presença registrada. A aula é <strong>concluída</strong> quando você
-            envia as fotos. Se precisar, pode fechar o link e voltar depois — a
-            aula fica como <strong>pendente de fotos</strong>.
-          </p>
-          {presentesCount > 0 && (
-            <p className="text-xs text-[var(--c-text-soft)]">
-              Presença registrada: {presentesCount}/{dados.alunos.length} presentes.
-            </p>
-          )}
-          <input
-            ref={fileInput}
-            type="file" accept="image/*" multiple capture="environment"
-            className="hidden" id="fotos-input"
-            onChange={(e) => adicionarFotos(e.target.files)}
-          />
-          <label htmlFor="fotos-input" className="btn btn-ghost btn-lg cursor-pointer">
-            📷 Adicionar fotos
-          </label>
-          <p className="text-xs text-[var(--c-text-soft)]">
-            Apenas imagens, até 5 MB cada, máximo de {MAX_FOTOS} fotos.
-          </p>
-          {fotos.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {fotos.map((f, i) => (
-                <div key={i} className="relative">
-                  <img src={URL.createObjectURL(f)} alt={f.name}
-                       className="h-20 w-full rounded-lg object-cover" />
-                  <button
-                    className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--c-danger)] text-xs text-white"
-                    onClick={() => setFotos((fs) => fs.filter((_, j) => j !== i))}
-                    aria-label={`Remover ${f.name}`}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
-                  onClick={enviarFotos} disabled={salvando || fotos.length === 0}>
-            {salvando
-              ? 'Enviando…'
-              : fotos.length === 0
-                ? '📷 Adicione uma foto para concluir'
-                : `Enviar ${fotos.length} foto${fotos.length === 1 ? '' : 's'} e concluir aula`}
-          </button>
-          <button className="btn btn-ghost" onClick={limpar} disabled={salvando}>
-            Escolher outra aula
-          </button>
+          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton" />)}
         </div>
       ) : (
-        /* Modo nova chamada — registra a presença */
         <>
+          {chamadaIniciada && (
+            <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
+              ✓ Aula iniciada — cada presença confirmada é salva na hora. Pode
+              fechar o link e voltar depois: nada se perde. Data, professor e
+              relatório já foram gravados e não podem mais ser alterados.
+            </p>
+          )}
+
           <div className="card flex flex-col gap-4">
-            <Field label="Data da aula" required error={erros.data}>
-              <input type="date" value={dataAula} aria-invalid={!!erros.data}
+            <Field label="Data da aula" required>
+              <input type="date" value={dataAula} disabled={camposTravados}
                      className="!py-3 !text-base"
                      onChange={(e) => setDataAula(e.target.value)} />
             </Field>
@@ -279,13 +278,14 @@ export default function Chamada() {
                 <div key={i} className="flex items-center gap-2">
                   <input
                     value={nome}
+                    disabled={camposTravados}
                     aria-invalid={i === 0 && !!erros.professor}
                     className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-3 text-lg"
                     style={i === 0 && erros.professor ? { borderColor: 'var(--c-danger)' } : undefined}
                     placeholder={i === 0 ? 'Professor principal (obrigatório)' : 'Professor (opcional)'}
                     onChange={(e) => mudarProfessor(i, e.target.value)}
                   />
-                  {professores.length > 1 && (
+                  {professores.length > 1 && !camposTravados && (
                     <button
                       className="btn btn-ghost !px-3 !py-2 text-[var(--c-danger)]"
                       onClick={() => setProfessores((ps) => ps.filter((_, j) => j !== i))}
@@ -297,12 +297,14 @@ export default function Chamada() {
                 </div>
               ))}
               {erros.professor && <p className="field-error">{erros.professor}</p>}
-              <button
-                className="btn btn-ghost self-start !py-2 text-sm"
-                onClick={() => setProfessores((ps) => [...ps, ''])}
-              >
-                + Adicionar professor
-              </button>
+              {!camposTravados && (
+                <button
+                  className="btn btn-ghost self-start !py-2 text-sm"
+                  onClick={() => setProfessores((ps) => [...ps, ''])}
+                >
+                  + Adicionar professor
+                </button>
+              )}
             </div>
           </div>
 
@@ -314,9 +316,6 @@ export default function Chamada() {
                 {presentesCount} presente{presentesCount === 1 ? '' : 's'}
               </span>
             </div>
-            {erros.presencas && (
-              <p className="field-error px-4 pb-2">{erros.presencas}</p>
-            )}
             {dados.alunos.length === 0 ? (
               <EmptyState
                 icon="🎓" title="Nenhum aluno neste polo"
@@ -326,6 +325,7 @@ export default function Chamada() {
               <ul className="border-t border-[var(--c-border)]">
                 {dados.alunos.map((a) => {
                   const marcado = presencas[a.id]
+                  const travado = criandoChamada || pendentes.has(a.id)
                   return (
                     <li key={a.id}
                         className="flex flex-col gap-2.5 border-b border-[var(--c-border)] p-3">
@@ -352,9 +352,10 @@ export default function Chamada() {
                           ? '!bg-[var(--c-green-fg)] !text-white'
                           : 'btn-ghost'}`}
                         onClick={() => alternarPresenca(a.id)}
+                        disabled={travado}
                         aria-pressed={marcado === true}
                       >
-                        {marcado ? '✓ Presente' : 'Confirmar presença'}
+                        {travado ? 'Salvando…' : marcado ? '✓ Presente' : 'Confirmar presença'}
                       </button>
                     </li>
                   )
@@ -367,45 +368,51 @@ export default function Chamada() {
           <div className="card flex flex-col gap-3">
             <h2 className="font-bold">Aluno não está na lista?</h2>
             <p className="text-xs text-[var(--c-text-soft)]">
-              Escreva o nome e adicione. Isso <strong>não cria o cadastro</strong> —
-              vai como sugestão para o administrativo aprovar.
+              {camposTravados
+                ? 'A chamada já foi iniciada — não é mais possível sugerir alunos para este registro.'
+                : <>Escreva o nome e adicione. Isso <strong>não cria o cadastro</strong> —
+                  vai como sugestão para o administrativo aprovar.</>}
             </p>
-            <div className="flex gap-2">
-              <input
-                value={novoExtra}
-                placeholder="Nome do aluno"
-                className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-2"
-                onChange={(e) => setNovoExtra(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && novoExtra.trim()) {
+            {!camposTravados && (
+              <div className="flex gap-2">
+                <input
+                  value={novoExtra}
+                  placeholder="Nome do aluno"
+                  className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-2"
+                  onChange={(e) => setNovoExtra(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && novoExtra.trim()) {
+                      setAlunosExtras((xs) => [...xs, novoExtra.trim()])
+                      setNovoExtra('')
+                    }
+                  }}
+                />
+                <button
+                  className="btn btn-ghost"
+                  disabled={!novoExtra.trim()}
+                  onClick={() => {
                     setAlunosExtras((xs) => [...xs, novoExtra.trim()])
                     setNovoExtra('')
-                  }
-                }}
-              />
-              <button
-                className="btn btn-ghost"
-                disabled={!novoExtra.trim()}
-                onClick={() => {
-                  setAlunosExtras((xs) => [...xs, novoExtra.trim()])
-                  setNovoExtra('')
-                }}
-              >
-                + Adicionar
-              </button>
-            </div>
+                  }}
+                >
+                  + Adicionar
+                </button>
+              </div>
+            )}
             {alunosExtras.length > 0 && (
               <ul className="flex flex-wrap gap-2">
                 {alunosExtras.map((nome, i) => (
                   <li key={i} className="badge badge--amber !text-sm">
                     <span aria-hidden="true">◐</span> {nome}
-                    <button
-                      className="ml-1 font-bold"
-                      onClick={() => setAlunosExtras((xs) => xs.filter((_, j) => j !== i))}
-                      aria-label={`Remover ${nome}`}
-                    >
-                      ✕
-                    </button>
+                    {!camposTravados && (
+                      <button
+                        className="ml-1 font-bold"
+                        onClick={() => setAlunosExtras((xs) => xs.filter((_, j) => j !== i))}
+                        aria-label={`Remover ${nome}`}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -415,19 +422,58 @@ export default function Chamada() {
           {/* Relatório da aula */}
           <div className="card flex flex-col gap-4">
             <Field label="Relatório da aula">
-              <textarea rows={4} value={relatorio}
+              <textarea rows={4} value={relatorio} disabled={camposTravados}
                         placeholder="Como foi a aula? O que foi trabalhado?"
                         onChange={(e) => setRelatorio(e.target.value)} />
             </Field>
           </div>
 
-          {/* Passo 1: salva a presença. As fotos vêm em seguida (ou depois). */}
-          <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
-                  onClick={salvarPresenca} disabled={salvando}>
-            {salvando
-              ? 'Salvando…'
-              : `Salvar chamada${presentesCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
-          </button>
+          {/* Fotos — só existe depois que a chamada foi criada (1º toggle) */}
+          {chamadaIniciada && (
+            <div className="card flex flex-col gap-3">
+              <h2 className="font-bold">📷 Fotos da Aula {numeroAula}</h2>
+              <p className="text-xs text-[var(--c-text-soft)]">
+                A aula é <strong>concluída</strong> quando você envia as fotos.
+              </p>
+              <input
+                ref={fileInput}
+                type="file" accept="image/*" multiple capture="environment"
+                className="hidden" id="fotos-input"
+                onChange={(e) => adicionarFotos(e.target.files)}
+              />
+              <label htmlFor="fotos-input" className="btn btn-ghost btn-lg cursor-pointer">
+                📷 Adicionar fotos
+              </label>
+              <p className="text-xs text-[var(--c-text-soft)]">
+                Apenas imagens, até 5 MB cada, máximo de {MAX_FOTOS} fotos.
+              </p>
+              {fotos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {fotos.map((f, i) => (
+                    <div key={i} className="relative">
+                      <img src={URL.createObjectURL(f)} alt={f.name}
+                           className="h-20 w-full rounded-lg object-cover" />
+                      <button
+                        className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--c-danger)] text-xs text-white"
+                        onClick={() => setFotos((fs) => fs.filter((_, j) => j !== i))}
+                        aria-label={`Remover ${f.name}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
+                      onClick={enviarFotos} disabled={enviandoFotos || fotos.length === 0}>
+                {enviandoFotos
+                  ? 'Enviando…'
+                  : fotos.length === 0
+                    ? '📷 Adicione uma foto para concluir'
+                    : `Enviar ${fotos.length} foto${fotos.length === 1 ? '' : 's'} e concluir aula`}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

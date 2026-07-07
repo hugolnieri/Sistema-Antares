@@ -5,9 +5,12 @@
  * Chamado automaticamente pelo git hook post-commit.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const claudeMdPath = path.join(__dirname, '..', 'CLAUDE.md');
 

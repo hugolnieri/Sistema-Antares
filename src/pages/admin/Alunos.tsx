@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Drawer, Field, Modal, ConfirmModal, StatusBadge, EmptyState } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { fmtData, fmtDataHora } from '../../lib/format'
+import { baixarModeloAlunos, lerPlanilhaAlunos, type LinhaPlanilhaAlunos } from '../../lib/planilhaAlunos'
 import type { Aluno, AlunoSugerido, Polo, Responsavel } from '../../lib/types'
 
 const FORM_VAZIO = {
@@ -17,6 +18,10 @@ interface PresencaHist {
   id: string
   presente: boolean
   historico_aulas?: { numero_aula: number; ciclo: number; data_hora: string; polos?: { nome: string } | null } | null
+}
+interface LinhaImportPreview extends LinhaPlanilhaAlunos {
+  linha: number
+  erro?: string
 }
 
 export default function Alunos() {
@@ -42,6 +47,12 @@ export default function Alunos() {
   // Histórico de presença do aluno
   const [alunoHistorico, setAlunoHistorico] = useState<Aluno | null>(null)
   const [presencasAluno, setPresencasAluno] = useState<PresencaHist[] | null>(null)
+
+  // Importação em massa via planilha
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const [importAberto, setImportAberto] = useState(false)
+  const [importLinhas, setImportLinhas] = useState<LinhaImportPreview[]>([])
+  const [importando, setImportando] = useState(false)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -186,6 +197,103 @@ export default function Alunos() {
     setPresencasAluno((data ?? []) as unknown as PresencaHist[])
   }
 
+  const validarLinhaImport = (l: LinhaPlanilhaAlunos): string | undefined => {
+    if (!l.nome) return 'Informe o nome do aluno.'
+    if (!l.polo) return 'Informe o polo.'
+    if (!polos.some((p) => p.nome.trim().toLowerCase() === l.polo.toLowerCase())) {
+      return `Polo "${l.polo}" não encontrado.`
+    }
+    if (l.status && !['ativo', 'inativo'].includes(l.status.toLowerCase())) {
+      return 'Status deve ser "Ativo" ou "Inativo".'
+    }
+    return undefined
+  }
+
+  const selecionarArquivoImportacao = async (arquivo: File | null) => {
+    if (importInputRef.current) importInputRef.current.value = ''
+    if (!arquivo) return
+    try {
+      const linhas = await lerPlanilhaAlunos(arquivo)
+      if (!linhas.length) {
+        toast.error('A planilha está vazia ou não segue o modelo esperado.')
+        return
+      }
+      setImportLinhas(linhas.map((l, i) => ({ ...l, linha: i + 2, erro: validarLinhaImport(l) })))
+      setImportAberto(true)
+    } catch {
+      toast.error('Não foi possível ler o arquivo. Confira se é um .xlsx válido.')
+    }
+  }
+
+  const importLinhasValidas = importLinhas.filter((l) => !l.erro)
+
+  // Importa em lote: cria os responsáveis que ainda não existem (reaproveita
+  // por nome+telefone), insere os alunos preservando a ordem das linhas
+  // válidas, e então vincula cada aluno ao seu responsável pela mesma ordem.
+  const confirmarImportacao = async () => {
+    if (!importLinhasValidas.length) return
+    setImportando(true)
+
+    const chaveResp = (nome: string, telefone: string) => `${nome.trim().toLowerCase()}|${telefone.trim()}`
+    const { data: respExistentes } = await supabase.from('responsaveis').select('id, nome, telefone')
+    const mapaResp = new Map<string, string>()
+    for (const r of (respExistentes ?? []) as { id: string; nome: string; telefone: string | null }[]) {
+      mapaResp.set(chaveResp(r.nome, r.telefone ?? ''), r.id)
+    }
+    const novosResp = new Map<string, { nome: string; telefone: string }>()
+    for (const l of importLinhasValidas) {
+      if (!l.respNome) continue
+      const chave = chaveResp(l.respNome, l.respTelefone)
+      if (!mapaResp.has(chave) && !novosResp.has(chave)) {
+        novosResp.set(chave, { nome: l.respNome, telefone: l.respTelefone })
+      }
+    }
+    if (novosResp.size) {
+      const { data: criados, error } = await supabase.from('responsaveis')
+        .insert([...novosResp.values()].map((r) => ({ nome: r.nome, telefone: r.telefone || null })))
+        .select('id, nome, telefone')
+      if (error) { setImportando(false); toast.error('Erro ao criar responsáveis da planilha.'); return }
+      for (const r of (criados ?? []) as { id: string; nome: string; telefone: string | null }[]) {
+        mapaResp.set(chaveResp(r.nome, r.telefone ?? ''), r.id)
+      }
+    }
+
+    const payloadAlunos = importLinhasValidas.map((l) => ({
+      nome: l.nome,
+      polo_id: polos.find((p) => p.nome.trim().toLowerCase() === l.polo.toLowerCase())!.id,
+      contato: l.contato || null,
+      observacoes: l.observacoes || null,
+      status: (l.status.toLowerCase() === 'inativo' ? 'inativo' : 'ativo') as 'ativo' | 'inativo',
+    }))
+    const { data: criadosAlunos, error: erroAlunos } = await supabase
+      .from('alunos').insert(payloadAlunos).select('id')
+    if (erroAlunos || !criadosAlunos) {
+      setImportando(false)
+      toast.error('Erro ao importar os alunos.')
+      return
+    }
+
+    const vinculos = importLinhasValidas
+      .map((l, i) => ({ l, alunoId: (criadosAlunos[i] as { id: string }).id }))
+      .filter(({ l }) => l.respNome)
+      .map(({ l, alunoId }) => ({
+        aluno_id: alunoId,
+        responsavel_id: mapaResp.get(chaveResp(l.respNome, l.respTelefone))!,
+        parentesco: l.parentesco || null,
+      }))
+    if (vinculos.length) {
+      const { error } = await supabase.from('aluno_responsaveis').insert(vinculos)
+      if (error) toast.error('Alunos importados, mas houve erro ao vincular alguns responsáveis.')
+    }
+
+    setImportando(false)
+    setImportAberto(false)
+    setImportLinhas([])
+    const n = criadosAlunos.length
+    toast.success(`${n} aluno${n === 1 ? '' : 's'} importado${n === 1 ? '' : 's'} com sucesso.`)
+    carregar()
+  }
+
   const linhas = filtroPolo ? alunos.filter((a) => a.polo_id === filtroPolo) : alunos
 
   const colunas: Column<Aluno>[] = [
@@ -263,7 +371,21 @@ export default function Alunos() {
         onRetry={carregar}
         searchValue={(a) => `${a.nome} ${a.polos?.nome ?? ''}`}
         searchPlaceholder="Buscar aluno…"
-        toolbar={<button className="btn btn-primary" onClick={abrirNovo}>+ Novo aluno</button>}
+        toolbar={
+          <div className="flex flex-wrap gap-2">
+            <button className="btn btn-ghost" onClick={() => baixarModeloAlunos(polos.map((p) => p.nome))}>
+              📥 Baixar modelo
+            </button>
+            <input
+              ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={(e) => selecionarArquivoImportacao(e.target.files?.[0] ?? null)}
+            />
+            <button className="btn btn-ghost" onClick={() => importInputRef.current?.click()}>
+              📤 Importar planilha
+            </button>
+            <button className="btn btn-primary" onClick={abrirNovo}>+ Novo aluno</button>
+          </div>
+        }
         filters={
           <Field label="Filtrar por polo">
             <select
@@ -414,6 +536,54 @@ export default function Alunos() {
         onConfirm={alternarStatus}
         onClose={() => setAlunoInativar(null)}
       />
+
+      {/* Modal de revisão da planilha importada */}
+      <Modal
+        open={importAberto}
+        title="Importar alunos da planilha"
+        onClose={() => { setImportAberto(false); setImportLinhas([]) }}
+        footer={
+          <>
+            <button className="btn btn-ghost" disabled={importando}
+                    onClick={() => { setImportAberto(false); setImportLinhas([]) }}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" disabled={importando || importLinhasValidas.length === 0}
+                    onClick={confirmarImportacao}>
+              {importando
+                ? 'Importando…'
+                : `Importar ${importLinhasValidas.length} aluno${importLinhasValidas.length === 1 ? '' : 's'}`}
+            </button>
+          </>
+        }
+      >
+        <p className="mb-3 text-sm text-[var(--c-text-soft)]">
+          {importLinhasValidas.length} de {importLinhas.length} linha{importLinhas.length === 1 ? '' : 's'} prontas
+          para importar.{importLinhas.length > importLinhasValidas.length && ' As linhas com erro serão ignoradas.'}
+        </p>
+        <div className="max-h-[50vh] overflow-y-auto">
+          <table className="data-table">
+            <thead>
+              <tr><th>Linha</th><th>Aluno</th><th>Polo</th><th>Responsável</th><th>Situação</th></tr>
+            </thead>
+            <tbody>
+              {importLinhas.map((l) => (
+                <tr key={l.linha}>
+                  <td>{l.linha}</td>
+                  <td>{l.nome || '—'}</td>
+                  <td>{l.polo || '—'}</td>
+                  <td>{l.respNome || '—'}</td>
+                  <td>
+                    {l.erro
+                      ? <span className="badge badge--red">{l.erro}</span>
+                      : <span className="badge badge--green">OK</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
     </>
   )
 }

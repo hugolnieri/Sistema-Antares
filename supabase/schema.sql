@@ -28,6 +28,7 @@ create table if not exists polos (
   longitude     double precision,
   senha_hash    text,                        -- bcrypt via pgcrypto; nunca exposta ao cliente
   token_version int  not null default 1,     -- incrementa ao trocar senha -> invalida sessões antigas
+  ciclo_atual   int  not null default 1,     -- avança quando a Aula 18 é registrada; libera 1-18 de novo
   status        text not null default 'ativo' check (status in ('ativo','inativo')),
   created_at    timestamptz not null default now()
 );
@@ -101,12 +102,14 @@ create table if not exists historico_aulas (
   id                uuid primary key default gen_random_uuid(),
   polo_id           uuid not null references polos(id) on delete cascade,
   numero_aula       int  not null check (numero_aula between 1 and 18),
+  ciclo             int  not null default 1,  -- em qual ciclo do polo essa aula foi dada
   professor_nome    text not null,             -- nomes concatenados (exibição)
   professores_nomes text[] not null default '{}', -- lista de professores da aula
   data_hora         timestamptz not null default now(),
   relatorio         text,
   criado_por        text not null default 'professor',
-  created_at        timestamptz not null default now()
+  created_at        timestamptz not null default now(),
+  unique (polo_id, ciclo, numero_aula)
 );
 
 create table if not exists presencas (

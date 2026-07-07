@@ -81,7 +81,7 @@ async function requirePolo(token: string | null) {
   if (!payload) return null;
   const { data: polo } = await supabase
     .from("polos")
-    .select("id, nome, slug, contato, token_version, status")
+    .select("id, nome, slug, contato, token_version, ciclo_atual, status")
     .eq("id", payload.poloId)
     .single();
   if (!polo || polo.status !== "ativo" || polo.token_version !== payload.tv) return null;
@@ -142,7 +142,7 @@ async function acaoDados(token: string) {
   const polo = await requirePolo(token);
   if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
 
-  const [alunosRes, materiaisRes] = await Promise.all([
+  const [alunosRes, materiaisRes, historicoRes] = await Promise.all([
     supabase
       .from("alunos")
       .select("id, nome, contato, observacoes")
@@ -151,7 +151,18 @@ async function acaoDados(token: string) {
       .from("materiais")
       .select("numero_aula, titulo, descricao, arquivo_path")
       .eq("status", "ativo").order("numero_aula"),
+    // Chamadas do ciclo atual do polo. temFotos distingue "pendente de fotos"
+    // (ainda selecionável, pra anexar depois) de "concluída" (bloqueada).
+    supabase
+      .from("historico_aulas")
+      .select("id, numero_aula, fotos_aula(id)")
+      .eq("polo_id", polo.id).eq("ciclo", polo.ciclo_atual),
   ]);
+  const chamadas = (historicoRes.data ?? []).map((h: any) => ({
+    numeroAula: h.numero_aula,
+    historicoId: h.id,
+    temFotos: (h.fotos_aula?.length ?? 0) > 0,
+  }));
 
   const alunos = (alunosRes.data ?? []).map((a: any) => ({
     id: a.id,
@@ -173,7 +184,27 @@ async function acaoDados(token: string) {
     }),
   );
 
-  return json({ polo: { id: polo.id, nome: polo.nome, contato: polo.contato }, alunos, materiais });
+  return json({
+    polo: { id: polo.id, nome: polo.nome, contato: polo.contato, ciclo: polo.ciclo_atual },
+    alunos, materiais, chamadas,
+  });
+}
+
+// O ciclo se encerra quando TODAS as 18 aulas estão concluídas (com foto).
+// Se estiver completo, avança o ciclo_atual (libera 1-18 de novo) e retorna true.
+async function avancarCicloSeCompleto(poloId: string, ciclo: number): Promise<boolean> {
+  const { data } = await supabase
+    .from("historico_aulas")
+    .select("numero_aula, fotos_aula(id)")
+    .eq("polo_id", poloId).eq("ciclo", ciclo);
+  const comFotos = new Set(
+    (data ?? [])
+      .filter((h: any) => (h.fotos_aula?.length ?? 0) > 0)
+      .map((h: any) => h.numero_aula),
+  );
+  if (comFotos.size < 18) return false;
+  await supabase.from("polos").update({ ciclo_atual: ciclo + 1 }).eq("id", poloId);
+  return true;
 }
 
 // Valida a lista de fotos; retorna a Response de erro ou null se ok.
@@ -230,7 +261,9 @@ async function acaoFotosExtra(form: FormData) {
   if (invalida) return invalida;
 
   const fotosErro = await uploadFotos(polo.id, hist.id, fotos);
-  return json({ historicoId: hist.id, fotosErro });
+  // Anexar fotos pode ter concluído a última aula pendente do ciclo.
+  const cicloConcluido = await avancarCicloSeCompleto(polo.id, polo.ciclo_atual);
+  return json({ historicoId: hist.id, fotosErro, cicloConcluido });
 }
 
 async function acaoChamada(form: FormData) {
@@ -266,6 +299,14 @@ async function acaoChamada(form: FormData) {
   }
   if (!dados.presencas?.length) return json({ error: "Nenhum aluno na chamada" }, 400);
 
+  // Essa aula já foi registrada no ciclo atual do polo?
+  const { count: jaDada } = await supabase
+    .from("historico_aulas").select("id", { count: "exact", head: true })
+    .eq("polo_id", polo.id).eq("ciclo", polo.ciclo_atual).eq("numero_aula", dados.numeroAula);
+  if ((jaDada ?? 0) > 0) {
+    return json({ error: "Esta aula já foi registrada neste ciclo. Escolha outra." }, 409);
+  }
+
   // Data da aula ao meio-dia (evita virar o dia por fuso horário)
   const dataHora = new Date(`${dados.dataAula}T12:00:00`).toISOString();
 
@@ -287,6 +328,7 @@ async function acaoChamada(form: FormData) {
     .insert({
       polo_id: polo.id,
       numero_aula: dados.numeroAula,
+      ciclo: polo.ciclo_atual,
       professor_nome: professores.join(", "),
       professores_nomes: professores,
       data_hora: dataHora,
@@ -319,7 +361,10 @@ async function acaoChamada(form: FormData) {
   }
 
   const fotosErro = await uploadFotos(polo.id, hist.id, fotos);
-  return json({ historicoId: hist.id, fotosErro });
+  // Se o professor já enviou fotos junto com a chamada, isso pode ter fechado
+  // o ciclo (todas as 18 concluídas). Sem fotos, a aula fica pendente.
+  const cicloConcluido = await avancarCicloSeCompleto(polo.id, polo.ciclo_atual);
+  return json({ historicoId: hist.id, fotosErro, cicloConcluido });
 }
 
 // --- roteamento ------------------------------------------------------------

@@ -18,7 +18,6 @@ import PoloLogin from './pages/professor/PoloLogin'
 import PoloLayout from './pages/professor/PoloLayout'
 import Chamada from './pages/professor/Chamada'
 import MateriaisProfessor from './pages/professor/MateriaisProfessor'
-import Confirmacao from './pages/professor/Confirmacao'
 
 export default function App() {
   return (
@@ -51,7 +50,6 @@ export default function App() {
           <Route path="/professor/polo/:slug" element={<PoloLayout />}>
             <Route path="chamada" element={<Chamada />} />
             <Route path="materiais" element={<MateriaisProfessor />} />
-            <Route path="confirmacao" element={<Confirmacao />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/admin" replace />} />

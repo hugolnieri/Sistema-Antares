@@ -25,7 +25,7 @@ export default function Historico() {
     setErro(null)
     const [histRes, polosRes, alunosRes] = await Promise.all([
       supabase.from('historico_aulas')
-        .select('id, polo_id, numero_aula, professor_nome, data_hora, criado_por, polos(nome), presencas(aluno_id, presente), fotos_aula(id)')
+        .select('id, polo_id, numero_aula, ciclo, professor_nome, data_hora, criado_por, polos(nome), presencas(aluno_id, presente), fotos_aula(id)')
         .order('data_hora', { ascending: false })
         .limit(500),
       supabase.from('polos').select('id, nome').order('nome'),
@@ -56,7 +56,10 @@ export default function Historico() {
       render: (h) => fmtDataHora(h.data_hora),
     },
     { key: 'polo', header: 'Polo', render: (h) => h.polos?.nome ?? '—' },
-    { key: 'numero_aula', header: 'Aula', sortable: true, render: (h) => `Aula ${h.numero_aula}` },
+    {
+      key: 'numero_aula', header: 'Aula', sortable: true,
+      render: (h) => `Aula ${h.numero_aula} · Ciclo ${h.ciclo}`,
+    },
     { key: 'professor_nome', header: 'Professor', sortable: true },
     {
       key: 'presenca', header: 'Presença',
@@ -97,7 +100,7 @@ export default function Historico() {
       loading={loading}
       error={erro}
       onRetry={carregar}
-      searchValue={(h) => `${h.polos?.nome ?? ''} ${h.professor_nome} aula ${h.numero_aula}`}
+      searchValue={(h) => `${h.polos?.nome ?? ''} ${h.professor_nome} aula ${h.numero_aula} ciclo ${h.ciclo}`}
       searchPlaceholder="Buscar por polo ou professor…"
       filters={
         <>

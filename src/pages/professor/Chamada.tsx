@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { poloApi } from '../../lib/poloApi'
 import { linkWhatsApp } from '../../lib/format'
 import { Field, EmptyState } from '../../components/ui'
@@ -10,12 +9,14 @@ const MAX_FOTO_BYTES = 5 * 1024 * 1024
 const MAX_FOTOS = 10
 
 export default function Chamada() {
-  const { slug, token, dados } = usePolo()
-  const navigate = useNavigate()
+  const { token, dados, recarregar } = usePolo()
   const toast = useToast()
 
   const hoje = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD no fuso local
   const [numeroAula, setNumeroAula] = useState(0)
+  // Quando != null, a chamada já foi salva (ou é uma aula pendente selecionada):
+  // a tela passa a pedir só as fotos para concluir a aula.
+  const [historicoId, setHistoricoId] = useState<string | null>(null)
   const [dataAula, setDataAula] = useState(hoje)
   // Padrão: 2 campos de professor (só o 1º é obrigatório)
   const [professores, setProfessores] = useState<string[]>(['', ''])
@@ -28,14 +29,21 @@ export default function Chamada() {
   const [salvando, setSalvando] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
+  const modoFotos = historicoId !== null
+
   // Mensagem automática para o contato DO POLO — pede o nome e telefone
   // do responsável pelo aluno, já que o professor não tem mais acesso direto.
   const mensagemConsultaResponsavel = (nomeAluno: string) =>
     `Olá! Sou professor(a) no polo ${dados.polo.nome}. Preciso do nome e ` +
     `telefone do responsável pelo aluno(a) *${nomeAluno}* para contato. Pode me ajudar?`
 
-  const marcar = (alunoId: string, presente: boolean) =>
-    setPresencas((p) => ({ ...p, [alunoId]: presente }))
+  const alternarPresenca = (alunoId: string) =>
+    setPresencas((p) => {
+      const novo = { ...p }
+      if (novo[alunoId]) delete novo[alunoId]
+      else novo[alunoId] = true
+      return novo
+    })
 
   // Registra o pedido de contato no admin (não bloqueia a abertura do WhatsApp).
   const consultarResponsaveis = (alunoId: string, alunoNome: string) => {
@@ -47,6 +55,30 @@ export default function Chamada() {
     setProfessores((ps) => ps.map((p, j) => (j === i ? valor : p)))
 
   const professoresPreenchidos = professores.map((p) => p.trim()).filter(Boolean)
+
+  // Escolher a aula reseta o formulário. Se a aula já tiver uma chamada salva
+  // (pendente de fotos), entra direto no modo de anexar fotos.
+  const selecionarAula = (n: number) => {
+    setNumeroAula(n)
+    setErros({})
+    setPresencas({})
+    setFotos([])
+    setRelatorio('')
+    setAlunosExtras([])
+    const existente = dados.chamadas.find((c) => c.numeroAula === n)
+    setHistoricoId(existente ? existente.historicoId : null)
+  }
+
+  const limpar = () => {
+    setNumeroAula(0)
+    setHistoricoId(null)
+    setPresencas({})
+    setFotos([])
+    setRelatorio('')
+    setAlunosExtras([])
+    setProfessores(['', ''])
+    setErros({})
+  }
 
   const adicionarFotos = (lista: FileList | null) => {
     if (!lista) return
@@ -73,19 +105,15 @@ export default function Chamada() {
     if (fileInput.current) fileInput.current.value = ''
   }
 
-  // "Salvar chamada" (logo após a lista de alunos) não exige foto — dá pra
-  // anexar depois, na confirmação. "Finalizar aula" (no fim da página) exige
-  // presença marcada e pelo menos uma foto antes de enviar.
-  const enviar = async (exigirFoto: boolean) => {
+  // Passo 1: salva a presença (foto NÃO é obrigatória). Não sai da tela —
+  // passa para o modo de anexar fotos. O professor pode até fechar o link e
+  // voltar depois: a aula fica "pendente de fotos" e pode ser retomada.
+  const salvarPresenca = async () => {
     const novosErros: Record<string, string> = {}
     if (!numeroAula) novosErros.aula = 'Selecione a aula.'
     if (!dataAula) novosErros.data = 'Informe a data da aula.'
     if (professoresPreenchidos.length === 0) novosErros.professor = 'Informe ao menos um professor.'
-    const marcados = Object.keys(presencas)
-    if (marcados.length === 0) novosErros.presencas = 'Marque a presença de pelo menos um aluno.'
-    if (exigirFoto && fotos.length === 0) {
-      novosErros.fotos = 'Anexe pelo menos uma foto da aula para finalizar.'
-    }
+    if (Object.keys(presencas).length === 0) novosErros.presencas = 'Marque a presença de pelo menos um aluno.'
     setErros(novosErros)
     if (Object.keys(novosErros).length) {
       toast.error('Confira os campos destacados antes de continuar.')
@@ -99,27 +127,17 @@ export default function Chamada() {
         alunoId: a.id,
         presente: presencas[a.id] ?? false,
       }))
-      const resultado = await poloApi.salvarChamada(token, {
+      const r = await poloApi.salvarChamada(token, {
         numeroAula,
         professoresNomes: professoresPreenchidos,
         dataAula,
         relatorio: relatorio.trim() || undefined,
         presencas: lista,
         alunosExtras: alunosExtras.length ? alunosExtras : undefined,
-      }, fotos)
-      if (resultado.fotosErro?.length) {
-        toast.error(`Chamada salva, mas ${resultado.fotosErro.length} foto(s) falharam no envio.`)
-      }
-      navigate(`/professor/polo/${slug}/confirmacao`, {
-        state: {
-          historicoId: resultado.historicoId,
-          numeroAula,
-          presentes: lista.filter((p) => p.presente).length,
-          total: lista.length,
-          fotos: fotos.length - (resultado.fotosErro?.length ?? 0),
-          sugestoes: alunosExtras.length,
-        },
-      })
+      }, [])
+      setHistoricoId(r.historicoId)
+      recarregar() // atualiza a lista de chamadas (a aula vira "pendente de fotos")
+      toast.success('Chamada salva! Agora anexe as fotos para concluir a aula.')
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao salvar a chamada.')
     } finally {
@@ -127,249 +145,291 @@ export default function Chamada() {
     }
   }
 
-  const salvarChamada = () => enviar(false)
-  const finalizarAula = () => enviar(true)
+  // Passo 2: envia as fotos e conclui a aula.
+  const enviarFotos = async () => {
+    if (!historicoId || fotos.length === 0) return
+    setSalvando(true)
+    try {
+      const r = await poloApi.adicionarFotos(token, historicoId, fotos)
+      const enviadas = fotos.length - (r.fotosErro?.length ?? 0)
+      recarregar()
+      if (enviadas === 0) {
+        toast.error('Nenhuma foto foi enviada. Tente novamente.')
+        return
+      }
+      if (r.cicloConcluido) {
+        toast.success('🎉 Ciclo concluído! As aulas 1-18 estão liberadas de novo.')
+      } else {
+        toast.success('Aula concluída! Fotos enviadas.')
+      }
+      limpar()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao enviar as fotos.')
+    } finally {
+      setSalvando(false)
+    }
+  }
 
   const presentesCount = dados.alunos.filter((a) => presencas[a.id]).length
-  const marcadosCount = Object.keys(presencas).length
 
   return (
     <div className="flex flex-col gap-4 pb-6">
-      {/* Aula, data e professores */}
-      <div className="card flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-3">
-          <Field label="Aula" required error={erros.aula}>
-            <select value={numeroAula} aria-invalid={!!erros.aula}
-                    className="!py-3 !text-lg"
-                    onChange={(e) => setNumeroAula(Number(e.target.value))}>
-              <option value={0}>Selecione…</option>
-              {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>Aula {n}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Data da aula" required error={erros.data}>
-            <input type="date" value={dataAula} aria-invalid={!!erros.data}
-                   className="!py-3 !text-base"
-                   onChange={(e) => setDataAula(e.target.value)} />
-          </Field>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-semibold">
-            Professores <span className="text-red-600">*</span>
-          </label>
-          {professores.map((nome, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                value={nome}
-                aria-invalid={i === 0 && !!erros.professor}
-                className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-3 text-lg"
-                style={i === 0 && erros.professor ? { borderColor: 'var(--c-danger)' } : undefined}
-                placeholder={i === 0 ? 'Professor principal (obrigatório)' : 'Professor (opcional)'}
-                onChange={(e) => mudarProfessor(i, e.target.value)}
-              />
-              {professores.length > 1 && (
-                <button
-                  className="btn btn-ghost !px-3 !py-2 text-[var(--c-danger)]"
-                  onClick={() => setProfessores((ps) => ps.filter((_, j) => j !== i))}
-                  aria-label={`Remover professor ${i + 1}`}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
-          {erros.professor && <p className="field-error">{erros.professor}</p>}
-          <button
-            className="btn btn-ghost self-start !py-2 text-sm"
-            onClick={() => setProfessores((ps) => [...ps, ''])}
-          >
-            + Adicionar professor
-          </button>
-        </div>
-      </div>
-
-      {/* Lista de alunos */}
-      <div className="card !p-0">
-        <div className="flex items-center justify-between p-4">
-          <h2 className="font-bold">Alunos ({dados.alunos.length})</h2>
-          <span className="text-sm text-[var(--c-text-soft)]">
-            {presentesCount} presente{presentesCount === 1 ? '' : 's'}
-          </span>
-        </div>
-        {erros.presencas && (
-          <p className="field-error px-4 pb-2">{erros.presencas}</p>
-        )}
-        {dados.alunos.length === 0 ? (
-          <EmptyState
-            icon="🎓" title="Nenhum aluno neste polo"
-            message="Peça ao administrativo para cadastrar os alunos deste polo."
-          />
-        ) : (
-          <ul className="border-t border-[var(--c-border)]">
-            {dados.alunos.map((a) => {
-              const marcado = presencas[a.id]
+      {/* Passo 0: escolher a aula (o resto do formulário só aparece depois) */}
+      <div className="card flex flex-col gap-2">
+        <Field label="Aula" required error={erros.aula}>
+          <select value={numeroAula} aria-invalid={!!erros.aula}
+                  className="!py-3 !text-lg"
+                  onChange={(e) => selecionarAula(Number(e.target.value))}>
+            <option value={0}>Selecione…</option>
+            {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => {
+              const c = dados.chamadas.find((ch) => ch.numeroAula === n)
+              const concluida = c?.temFotos ?? false
+              const pendente = !!c && !c.temFotos
               return (
-                <li key={a.id}
-                    className="flex flex-col gap-2.5 border-b border-[var(--c-border)] p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{a.nome}</p>
-                      {a.observacoes && (
-                        <p className="mt-0.5 text-xs text-[var(--c-amber-fg)]">⚠️ {a.observacoes}</p>
-                      )}
-                    </div>
-                    {dados.polo.contato && (
-                      <a
-                        href={linkWhatsApp(dados.polo.contato, mensagemConsultaResponsavel(a.nome))}
-                        target="_blank" rel="noreferrer"
-                        onClick={() => consultarResponsaveis(a.id, a.nome)}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
-                      >
-                        💬 Consultar responsáveis
-                      </a>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      className={`btn flex-1 !py-2.5 ${marcado === true
-                        ? '!bg-[var(--c-green-fg)] !text-white'
-                        : 'btn-ghost'}`}
-                      onClick={() => marcar(a.id, true)}
-                      aria-pressed={marcado === true}
-                    >
-                      ✓ Presente
-                    </button>
-                    <button
-                      className={`btn flex-1 !py-2.5 ${marcado === false
-                        ? 'btn-danger'
-                        : 'btn-ghost'}`}
-                      onClick={() => marcar(a.id, false)}
-                      aria-pressed={marcado === false}
-                    >
-                      ✕ Ausente
-                    </button>
-                  </div>
-                </li>
+                <option key={n} value={n} disabled={concluida}>
+                  Aula {n}
+                  {concluida ? ' (concluída)' : pendente ? ' (pendente de fotos)' : ''}
+                </option>
               )
             })}
-          </ul>
-        )}
+          </select>
+        </Field>
+        <p className="text-xs text-[var(--c-text-soft)]">
+          Ciclo atual: {dados.polo.ciclo}
+        </p>
       </div>
 
-      {/* Alunos que não estão na lista (sugestão de cadastro) */}
-      <div className="card flex flex-col gap-3">
-        <h2 className="font-bold">Aluno não está na lista?</h2>
-        <p className="text-xs text-[var(--c-text-soft)]">
-          Escreva o nome e adicione. Isso <strong>não cria o cadastro</strong> —
-          vai como sugestão para o administrativo aprovar.
-        </p>
-        <div className="flex gap-2">
-          <input
-            value={novoExtra}
-            placeholder="Nome do aluno"
-            className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-2"
-            onChange={(e) => setNovoExtra(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && novoExtra.trim()) {
-                setAlunosExtras((xs) => [...xs, novoExtra.trim()])
-                setNovoExtra('')
-              }
-            }}
+      {numeroAula === 0 ? (
+        <div className="card">
+          <EmptyState
+            icon="📋" title="Selecione a aula"
+            message="Escolha a aula acima para registrar a presença."
           />
-          <button
-            className="btn btn-ghost"
-            disabled={!novoExtra.trim()}
-            onClick={() => {
-              setAlunosExtras((xs) => [...xs, novoExtra.trim()])
-              setNovoExtra('')
-            }}
-          >
-            + Adicionar
+        </div>
+      ) : modoFotos ? (
+        /* Modo fotos — a aula é concluída quando as fotos são enviadas */
+        <div className="card flex flex-col gap-3">
+          <h2 className="font-bold">📷 Fotos da Aula {numeroAula}</h2>
+          <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
+            ✓ Presença registrada. A aula é <strong>concluída</strong> quando você
+            envia as fotos. Se precisar, pode fechar o link e voltar depois — a
+            aula fica como <strong>pendente de fotos</strong>.
+          </p>
+          {presentesCount > 0 && (
+            <p className="text-xs text-[var(--c-text-soft)]">
+              Presença registrada: {presentesCount}/{dados.alunos.length} presentes.
+            </p>
+          )}
+          <input
+            ref={fileInput}
+            type="file" accept="image/*" multiple capture="environment"
+            className="hidden" id="fotos-input"
+            onChange={(e) => adicionarFotos(e.target.files)}
+          />
+          <label htmlFor="fotos-input" className="btn btn-ghost btn-lg cursor-pointer">
+            📷 Adicionar fotos
+          </label>
+          <p className="text-xs text-[var(--c-text-soft)]">
+            Apenas imagens, até 5 MB cada, máximo de {MAX_FOTOS} fotos.
+          </p>
+          {fotos.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {fotos.map((f, i) => (
+                <div key={i} className="relative">
+                  <img src={URL.createObjectURL(f)} alt={f.name}
+                       className="h-20 w-full rounded-lg object-cover" />
+                  <button
+                    className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--c-danger)] text-xs text-white"
+                    onClick={() => setFotos((fs) => fs.filter((_, j) => j !== i))}
+                    aria-label={`Remover ${f.name}`}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
+                  onClick={enviarFotos} disabled={salvando || fotos.length === 0}>
+            {salvando
+              ? 'Enviando…'
+              : fotos.length === 0
+                ? '📷 Adicione uma foto para concluir'
+                : `Enviar ${fotos.length} foto${fotos.length === 1 ? '' : 's'} e concluir aula`}
+          </button>
+          <button className="btn btn-ghost" onClick={limpar} disabled={salvando}>
+            Escolher outra aula
           </button>
         </div>
-        {alunosExtras.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {alunosExtras.map((nome, i) => (
-              <li key={i} className="badge badge--amber !text-sm">
-                <span aria-hidden="true">◐</span> {nome}
-                <button
-                  className="ml-1 font-bold"
-                  onClick={() => setAlunosExtras((xs) => xs.filter((_, j) => j !== i))}
-                  aria-label={`Remover ${nome}`}
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      ) : (
+        /* Modo nova chamada — registra a presença */
+        <>
+          <div className="card flex flex-col gap-4">
+            <Field label="Data da aula" required error={erros.data}>
+              <input type="date" value={dataAula} aria-invalid={!!erros.data}
+                     className="!py-3 !text-base"
+                     onChange={(e) => setDataAula(e.target.value)} />
+            </Field>
 
-      {/* Botão de salvar — checkpoint rápido, não exige foto */}
-      <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
-              onClick={salvarChamada} disabled={salvando}>
-        {salvando
-          ? 'Salvando…'
-          : `Salvar chamada${marcadosCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
-      </button>
-
-      {/* Relatório da aula */}
-      <div className="card flex flex-col gap-4">
-        <Field label="Relatório da aula">
-          <textarea rows={4} value={relatorio}
-                    placeholder="Como foi a aula? O que foi trabalhado?"
-                    onChange={(e) => setRelatorio(e.target.value)} />
-        </Field>
-      </div>
-
-      {/* Fotos */}
-      <div className="card flex flex-col gap-3">
-        <h2 className="font-bold">Fotos da aula</h2>
-        <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
-          Para usar o botão <strong>Finalizar aula</strong> abaixo, é obrigatório
-          anexar pelo menos uma foto. Se preferir, use o botão <strong>Salvar
-          chamada</strong> acima — aí a foto é opcional e pode ser anexada depois,
-          na tela de confirmação.
-        </p>
-        <input
-          ref={fileInput}
-          type="file" accept="image/*" multiple capture="environment"
-          className="hidden" id="fotos-input"
-          onChange={(e) => adicionarFotos(e.target.files)}
-        />
-        <label htmlFor="fotos-input" className="btn btn-ghost btn-lg cursor-pointer">
-          📷 Adicionar fotos
-        </label>
-        {erros.fotos && <p className="field-error">{erros.fotos}</p>}
-        <p className="text-xs text-[var(--c-text-soft)]">
-          Apenas imagens, até 5 MB cada, máximo de {MAX_FOTOS} fotos.
-        </p>
-        {fotos.length > 0 && (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {fotos.map((f, i) => (
-              <div key={i} className="relative">
-                <img src={URL.createObjectURL(f)} alt={f.name}
-                     className="h-20 w-full rounded-lg object-cover" />
-                <button
-                  className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--c-danger)] text-xs text-white"
-                  onClick={() => setFotos((fs) => fs.filter((_, j) => j !== i))}
-                  aria-label={`Remover ${f.name}`}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold">
+                Professores <span className="text-red-600">*</span>
+              </label>
+              {professores.map((nome, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    value={nome}
+                    aria-invalid={i === 0 && !!erros.professor}
+                    className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-3 text-lg"
+                    style={i === 0 && erros.professor ? { borderColor: 'var(--c-danger)' } : undefined}
+                    placeholder={i === 0 ? 'Professor principal (obrigatório)' : 'Professor (opcional)'}
+                    onChange={(e) => mudarProfessor(i, e.target.value)}
+                  />
+                  {professores.length > 1 && (
+                    <button
+                      className="btn btn-ghost !px-3 !py-2 text-[var(--c-danger)]"
+                      onClick={() => setProfessores((ps) => ps.filter((_, j) => j !== i))}
+                      aria-label={`Remover professor ${i + 1}`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              {erros.professor && <p className="field-error">{erros.professor}</p>}
+              <button
+                className="btn btn-ghost self-start !py-2 text-sm"
+                onClick={() => setProfessores((ps) => [...ps, ''])}
+              >
+                + Adicionar professor
+              </button>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Botão de finalizar — exige presença marcada e ao menos uma foto */}
-      <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
-              onClick={finalizarAula} disabled={salvando}>
-        {salvando ? 'Finalizando…' : 'Finalizar aula'}
-      </button>
+          {/* Lista de alunos */}
+          <div className="card !p-0">
+            <div className="flex items-center justify-between p-4">
+              <h2 className="font-bold">Alunos ({dados.alunos.length})</h2>
+              <span className="text-sm text-[var(--c-text-soft)]">
+                {presentesCount} presente{presentesCount === 1 ? '' : 's'}
+              </span>
+            </div>
+            {erros.presencas && (
+              <p className="field-error px-4 pb-2">{erros.presencas}</p>
+            )}
+            {dados.alunos.length === 0 ? (
+              <EmptyState
+                icon="🎓" title="Nenhum aluno neste polo"
+                message="Peça ao administrativo para cadastrar os alunos deste polo."
+              />
+            ) : (
+              <ul className="border-t border-[var(--c-border)]">
+                {dados.alunos.map((a) => {
+                  const marcado = presencas[a.id]
+                  return (
+                    <li key={a.id}
+                        className="flex flex-col gap-2.5 border-b border-[var(--c-border)] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold">{a.nome}</p>
+                          {a.observacoes && (
+                            <p className="mt-0.5 text-xs text-[var(--c-amber-fg)]">⚠️ {a.observacoes}</p>
+                          )}
+                        </div>
+                        {dados.polo.contato && (
+                          <a
+                            href={linkWhatsApp(dados.polo.contato, mensagemConsultaResponsavel(a.nome))}
+                            target="_blank" rel="noreferrer"
+                            onClick={() => consultarResponsaveis(a.id, a.nome)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
+                          >
+                            💬 Consultar responsáveis
+                          </a>
+                        )}
+                      </div>
+                      <button
+                        className={`btn w-full !py-2.5 ${marcado
+                          ? '!bg-[var(--c-green-fg)] !text-white'
+                          : 'btn-ghost'}`}
+                        onClick={() => alternarPresenca(a.id)}
+                        aria-pressed={marcado === true}
+                      >
+                        {marcado ? '✓ Presente' : 'Confirmar presença'}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+
+          {/* Alunos que não estão na lista (sugestão de cadastro) */}
+          <div className="card flex flex-col gap-3">
+            <h2 className="font-bold">Aluno não está na lista?</h2>
+            <p className="text-xs text-[var(--c-text-soft)]">
+              Escreva o nome e adicione. Isso <strong>não cria o cadastro</strong> —
+              vai como sugestão para o administrativo aprovar.
+            </p>
+            <div className="flex gap-2">
+              <input
+                value={novoExtra}
+                placeholder="Nome do aluno"
+                className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-2"
+                onChange={(e) => setNovoExtra(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && novoExtra.trim()) {
+                    setAlunosExtras((xs) => [...xs, novoExtra.trim()])
+                    setNovoExtra('')
+                  }
+                }}
+              />
+              <button
+                className="btn btn-ghost"
+                disabled={!novoExtra.trim()}
+                onClick={() => {
+                  setAlunosExtras((xs) => [...xs, novoExtra.trim()])
+                  setNovoExtra('')
+                }}
+              >
+                + Adicionar
+              </button>
+            </div>
+            {alunosExtras.length > 0 && (
+              <ul className="flex flex-wrap gap-2">
+                {alunosExtras.map((nome, i) => (
+                  <li key={i} className="badge badge--amber !text-sm">
+                    <span aria-hidden="true">◐</span> {nome}
+                    <button
+                      className="ml-1 font-bold"
+                      onClick={() => setAlunosExtras((xs) => xs.filter((_, j) => j !== i))}
+                      aria-label={`Remover ${nome}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Relatório da aula */}
+          <div className="card flex flex-col gap-4">
+            <Field label="Relatório da aula">
+              <textarea rows={4} value={relatorio}
+                        placeholder="Como foi a aula? O que foi trabalhado?"
+                        onChange={(e) => setRelatorio(e.target.value)} />
+            </Field>
+          </div>
+
+          {/* Passo 1: salva a presença. As fotos vêm em seguida (ou depois). */}
+          <button className="btn btn-primary btn-lg w-full !py-4 !text-lg"
+                  onClick={salvarPresenca} disabled={salvando}>
+            {salvando
+              ? 'Salvando…'
+              : `Salvar chamada${presentesCount ? ` (${presentesCount}/${dados.alunos.length} presentes)` : ''}`}
+          </button>
+        </>
+      )}
     </div>
   )
 }

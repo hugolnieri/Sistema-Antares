@@ -80,7 +80,7 @@ export default function HistoricoDetalhe() {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-[var(--c-text-soft)]">Aula</p>
-            <p className="font-bold">Aula {registro.numero_aula}</p>
+            <p className="font-bold">Aula {registro.numero_aula} · Ciclo {registro.ciclo}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-[var(--c-text-soft)]">Professor</p>

@@ -43,7 +43,7 @@ const realPoloApi = {
       alunosExtras?: string[]
     },
     fotos: File[],
-  ): Promise<{ historicoId: string; fotosErro: string[] }> {
+  ): Promise<{ historicoId: string; fotosErro: string[]; cicloConcluido: boolean }> {
     const form = new FormData()
     form.append('token', token)
     form.append('dados', JSON.stringify(dados))
@@ -59,7 +59,7 @@ const realPoloApi = {
     token: string,
     historicoId: string,
     fotos: File[],
-  ): Promise<{ historicoId: string; fotosErro: string[] }> {
+  ): Promise<{ historicoId: string; fotosErro: string[]; cicloConcluido: boolean }> {
     const form = new FormData()
     form.append('token', token)
     form.append('historicoId', historicoId)

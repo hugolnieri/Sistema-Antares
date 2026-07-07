@@ -16,7 +16,7 @@ interface VinculoResp { responsavel_id: string; parentesco: string }
 interface PresencaHist {
   id: string
   presente: boolean
-  historico_aulas?: { numero_aula: number; data_hora: string; polos?: { nome: string } | null } | null
+  historico_aulas?: { numero_aula: number; ciclo: number; data_hora: string; polos?: { nome: string } | null } | null
 }
 
 export default function Alunos() {
@@ -179,7 +179,7 @@ export default function Alunos() {
     setPresencasAluno(null)
     const { data } = await supabase
       .from('presencas')
-      .select('id, presente, historico_aulas(numero_aula, data_hora, polos(nome))')
+      .select('id, presente, historico_aulas(numero_aula, ciclo, data_hora, polos(nome))')
       .eq('aluno_id', a.id)
       .order('id', { ascending: false })
       .limit(50)
@@ -389,7 +389,10 @@ export default function Alunos() {
             <tbody>
               {presencasAluno.map((p) => (
                 <tr key={p.id}>
-                  <td>Aula {p.historico_aulas?.numero_aula ?? '—'}</td>
+                  <td>
+                    Aula {p.historico_aulas?.numero_aula ?? '—'}
+                    {p.historico_aulas && ` · Ciclo ${p.historico_aulas.ciclo}`}
+                  </td>
                   <td>{p.historico_aulas?.polos?.nome ?? '—'}</td>
                   <td>{fmtDataHora(p.historico_aulas?.data_hora)}</td>
                   <td><StatusBadge status={p.presente ? 'presente' : 'ausente'} /></td>

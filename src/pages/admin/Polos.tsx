@@ -21,6 +21,7 @@ const FORM_VAZIO = {
   responsavel: '', contato: '', pix: '', observacoes: '',
   status: 'ativo' as 'ativo' | 'inativo',
   latitude: '', longitude: '',
+  cicloAtual: '1',
 }
 
 export default function Polos() {
@@ -54,7 +55,7 @@ export default function Polos() {
     setErro(null)
     const { data, error } = await supabase
       .from('polos')
-      .select('id, nome, slug, cep, logradouro, numero, complemento, bairro, cidade, estado, responsavel, contato, pix, observacoes, latitude, longitude, token_version, status, created_at')
+      .select('id, nome, slug, cep, logradouro, numero, complemento, bairro, cidade, estado, responsavel, contato, pix, observacoes, latitude, longitude, token_version, ciclo_atual, status, created_at')
       .order('nome')
     if (error) setErro('Não foi possível carregar os polos.')
     else setPolos((data ?? []) as Polo[])
@@ -83,6 +84,7 @@ export default function Polos() {
       pix: p.pix ?? '', observacoes: p.observacoes ?? '', status: p.status,
       latitude: p.latitude != null ? String(p.latitude) : '',
       longitude: p.longitude != null ? String(p.longitude) : '',
+      cicloAtual: String(p.ciclo_atual),
     })
     setFormErros({})
     setSlugEditado(true)
@@ -162,6 +164,7 @@ export default function Polos() {
       latitude: form.latitude.trim() ? Number(form.latitude) : null,
       longitude: form.longitude.trim() ? Number(form.longitude) : null,
       status: form.status,
+      ciclo_atual: Math.max(1, Number(form.cicloAtual) || 1),
     }
     const { error } = editando
       ? await supabase.from('polos').update(payload).eq('id', editando.id)
@@ -227,6 +230,10 @@ export default function Polos() {
     },
     { key: 'responsavel', header: 'Responsável', render: (p) => p.responsavel ?? '—' },
     { key: 'contato', header: 'Contato', render: (p) => p.contato ?? '—' },
+    {
+      key: 'ciclo_atual', header: 'Ciclo atual', sortable: true,
+      render: (p) => <span className="badge">Ciclo {p.ciclo_atual}</span>,
+    },
     { key: 'status', header: 'Status', sortable: true, render: (p) => <StatusBadge status={p.status} /> },
     {
       key: 'acoes', header: '',
@@ -428,6 +435,16 @@ export default function Polos() {
               <option value="inativo">Inativo</option>
             </select>
           </Field>
+          {editando && (
+            <Field label="Ciclo atual">
+              <input type="number" min={1} value={form.cicloAtual}
+                     onChange={(e) => setForm((f) => ({ ...f, cicloAtual: e.target.value }))} />
+              <p className="mt-1 text-xs text-[var(--c-text-soft)]">
+                Avança automaticamente ao registrar a Aula 18. Só corrija manualmente
+                em caso de erro de operação.
+              </p>
+            </Field>
+          )}
         </div>
       </Drawer>
 

@@ -16,6 +16,7 @@ export interface Polo {
   latitude: number | null
   longitude: number | null
   token_version: number
+  ciclo_atual: number
   status: 'ativo' | 'inativo'
   created_at: string
 }
@@ -109,6 +110,7 @@ export interface HistoricoAula {
   id: string
   polo_id: string
   numero_aula: number
+  ciclo: number
   professor_nome: string
   professores_nomes: string[]
   data_hora: string
@@ -159,8 +161,18 @@ export interface MaterialChamada {
   url: string | null
 }
 
+// Uma chamada já registrada no ciclo atual do polo.
+// - temFotos = false -> pendente: continua selecionável para anexar fotos depois
+// - temFotos = true  -> concluída: bloqueada no seletor
+export interface ChamadaExistente {
+  numeroAula: number
+  historicoId: string
+  temFotos: boolean
+}
+
 export interface DadosPolo {
-  polo: { id: string; nome: string; contato: string | null }
+  polo: { id: string; nome: string; contato: string | null; ciclo: number }
   alunos: AlunoChamada[]
   materiais: MaterialChamada[]
+  chamadas: ChamadaExistente[]
 }

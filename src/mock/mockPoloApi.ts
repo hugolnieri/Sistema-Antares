@@ -23,6 +23,22 @@ const fotoParaUrl = (f: File) =>
     reader.readAsDataURL(f)
   })
 
+type MockDB = ReturnType<typeof loadDB>
+
+// O ciclo se encerra quando TODAS as 18 aulas do ciclo atual têm foto
+// (concluídas). Avança polo.ciclo_atual e retorna true se completou agora.
+function avancarCicloSeCompleto(db: MockDB, polo: MockDB['polos'][number]): boolean {
+  const comFotos = new Set(
+    db.historico_aulas
+      .filter((h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual)
+      .filter((h) => db.fotos_aula.some((f) => f.historico_id === h.id))
+      .map((h) => h.numero_aula),
+  )
+  if (comFotos.size < 18) return false
+  polo.ciclo_atual += 1
+  return true
+}
+
 export const mockPoloApi = {
   async info(slug: string): Promise<{ nome: string }> {
     await sleep(200)
@@ -71,7 +87,19 @@ export const mockPoloApi = {
           ? (storageUrl('materiais', m.arquivo_path) ?? pdfDemoUrl(m.titulo))
           : null,
       }))
-    return { polo: { id: polo.id, nome: polo.nome, contato: polo.contato ?? null }, alunos, materiais }
+    // Chamadas do ciclo atual. temFotos separa "pendente de fotos" (ainda
+    // selecionável, pra anexar depois) de "concluída" (bloqueada no select).
+    const chamadas = db.historico_aulas
+      .filter((h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual)
+      .map((h) => ({
+        numeroAula: h.numero_aula,
+        historicoId: h.id,
+        temFotos: db.fotos_aula.some((f) => f.historico_id === h.id),
+      }))
+    return {
+      polo: { id: polo.id, nome: polo.nome, contato: polo.contato ?? null, ciclo: polo.ciclo_atual },
+      alunos, materiais, chamadas,
+    }
   },
 
   async solicitarContato(token: string, alunoId: string, alunoNome: string): Promise<{ ok: boolean }> {
@@ -109,7 +137,7 @@ export const mockPoloApi = {
       alunosExtras?: string[]
     },
     fotos: File[],
-  ): Promise<{ historicoId: string; fotosErro: string[] }> {
+  ): Promise<{ historicoId: string; fotosErro: string[]; cicloConcluido: boolean }> {
     await sleep(500)
     const db = loadDB()
     const [poloId, tv] = token.split('.')
@@ -125,6 +153,10 @@ export const mockPoloApi = {
     if (!dados.dataAula || !/^\d{4}-\d{2}-\d{2}$/.test(dados.dataAula)) {
       throw new Error('Informe a data da aula')
     }
+    const jaDada = db.historico_aulas.some(
+      (h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual && h.numero_aula === dados.numeroAula,
+    )
+    if (jaDada) throw new Error('Esta aula já foi registrada neste ciclo. Escolha outra.')
     if (fotos.length > MAX_FOTOS) throw new Error(`Máximo de ${MAX_FOTOS} fotos`)
     for (const f of fotos) {
       if (!f.type.startsWith('image/')) throw new Error(`"${f.name}" não é uma imagem`)
@@ -142,6 +174,7 @@ export const mockPoloApi = {
       id: historicoId,
       polo_id: polo.id,
       numero_aula: dados.numeroAula,
+      ciclo: polo.ciclo_atual,
       professor_nome: professores.join(', '),
       professores_nomes: professores,
       data_hora: dataHora,
@@ -172,15 +205,18 @@ export const mockPoloApi = {
         created_at: agora,
       })
     }
+    // Se o professor já enviou fotos junto, isso pode ter fechado o ciclo
+    // (todas as 18 concluídas). Sem fotos, a aula fica pendente.
+    const cicloConcluido = avancarCicloSeCompleto(db, polo)
     saveDB(db)
-    return { historicoId, fotosErro: [] }
+    return { historicoId, fotosErro: [], cicloConcluido }
   },
 
   async adicionarFotos(
     token: string,
     historicoId: string,
     fotos: File[],
-  ): Promise<{ historicoId: string; fotosErro: string[] }> {
+  ): Promise<{ historicoId: string; fotosErro: string[]; cicloConcluido: boolean }> {
     await sleep(400)
     const db = loadDB()
     const [poloId, tv] = token.split('.')
@@ -204,7 +240,9 @@ export const mockPoloApi = {
         url_externa: await fotoParaUrl(f), created_at: agora,
       })
     }
+    // Anexar fotos pode ter concluído a última aula pendente do ciclo.
+    const cicloConcluido = avancarCicloSeCompleto(db, polo)
     saveDB(db)
-    return { historicoId, fotosErro: [] }
+    return { historicoId, fotosErro: [], cicloConcluido }
   },
 }

@@ -307,22 +307,16 @@ export default function Alunos() {
         return nomes.length ? nomes.join(', ') : '—'
       },
     },
-    { key: 'status', header: 'Status', sortable: true, render: (a) => <StatusBadge status={a.status} /> },
     {
-      key: 'acoes', header: '',
+      key: 'status', header: 'Status', sortable: true,
       render: (a) => (
-        <div className="flex justify-end gap-1">
-          <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => abrirEdicao(a)}>
-            Editar
-          </button>
-          <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => abrirHistorico(a)}>
-            Presenças
-          </button>
-          <button className="btn btn-ghost !px-2 !py-1 text-xs text-[var(--c-danger)]"
-                  onClick={() => setAlunoInativar(a)}>
-            {a.status === 'ativo' ? 'Inativar' : 'Reativar'}
-          </button>
-        </div>
+        <button
+          className="border-0 bg-transparent p-0 cursor-pointer hover:opacity-80"
+          title={a.status === 'ativo' ? 'Clique para inativar o aluno' : 'Clique para reativar o aluno'}
+          onClick={(e) => { e.stopPropagation(); setAlunoInativar(a) }}
+        >
+          <StatusBadge status={a.status} />
+        </button>
       ),
     },
   ]
@@ -369,6 +363,7 @@ export default function Alunos() {
         loading={loading}
         error={erro}
         onRetry={carregar}
+        onRowClick={(a) => abrirEdicao(a)}
         searchValue={(a) => `${a.nome} ${a.polos?.nome ?? ''}`}
         searchPlaceholder="Buscar aluno…"
         toolbar={
@@ -425,6 +420,13 @@ export default function Alunos() {
             <input value={form.nome} aria-invalid={!!formErros.nome}
                    onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
           </Field>
+          {editando && (
+            <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
+              <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => abrirHistorico(editando)}>
+                🕘 Ver presenças
+              </button>
+            </div>
+          )}
           <Field label="Polo" required error={formErros.polo_id}>
             <select value={form.polo_id} aria-invalid={!!formErros.polo_id}
                     onChange={(e) => setForm((f) => ({ ...f, polo_id: e.target.value }))}>

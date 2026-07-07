@@ -141,7 +141,7 @@ export default function Professores() {
             {p.pix}
           </code>
           <button className="btn btn-ghost !px-2 !py-0.5 text-xs"
-                  onClick={() => copiarPix(p)} aria-label={`Copiar PIX de ${p.nome}`}>
+                  onClick={(e) => { e.stopPropagation(); copiarPix(p) }} aria-label={`Copiar PIX de ${p.nome}`}>
             📋 Copiar
           </button>
         </div>
@@ -158,22 +158,14 @@ export default function Professores() {
     },
     {
       key: 'status', header: 'Status', sortable: true,
-      render: (p) => p.ativo
-        ? <StatusBadge status={p.status} />
-        : <StatusBadge status="inativo" />,
-    },
-    {
-      key: 'acoes', header: '',
       render: (p) => (
-        <div className="flex justify-end gap-1">
-          <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => abrirEdicao(p)}>
-            Editar
-          </button>
-          <button className="btn btn-ghost !px-2 !py-1 text-xs text-[var(--c-danger)]"
-                  onClick={() => setProfInativar(p)}>
-            {p.ativo ? 'Inativar' : 'Reativar'}
-          </button>
-        </div>
+        <button
+          className="border-0 bg-transparent p-0 cursor-pointer hover:opacity-80"
+          title={p.ativo ? 'Clique para inativar o professor' : 'Clique para reativar o professor'}
+          onClick={(e) => { e.stopPropagation(); setProfInativar(p) }}
+        >
+          {p.ativo ? <StatusBadge status={p.status} /> : <StatusBadge status="inativo" />}
+        </button>
       ),
     },
   ]
@@ -204,6 +196,7 @@ export default function Professores() {
         loading={loading}
         error={erro}
         onRetry={carregar}
+        onRowClick={(p) => abrirEdicao(p)}
         searchValue={(p) => `${p.nome} ${p.contato ?? ''}`}
         searchPlaceholder="Buscar professor…"
         toolbar={<button className="btn btn-primary" onClick={abrirNovo}>+ Novo professor</button>}

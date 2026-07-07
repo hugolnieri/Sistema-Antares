@@ -74,6 +74,7 @@ export default function Responsaveis() {
     if (error) { toast.error('Erro ao excluir o responsável.'); return }
     toast.success('Responsável excluído.')
     setRespExcluir(null)
+    setDrawerAberto(false)
     carregar()
   }
 
@@ -90,20 +91,6 @@ export default function Responsaveis() {
         )
       },
     },
-    {
-      key: 'acoes', header: '',
-      render: (r) => (
-        <div className="flex justify-end gap-1">
-          <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => abrirEdicao(r)}>
-            Editar
-          </button>
-          <button className="btn btn-ghost !px-2 !py-1 text-xs text-[var(--c-danger)]"
-                  onClick={() => setRespExcluir(r)}>
-            Excluir
-          </button>
-        </div>
-      ),
-    },
   ]
 
   return (
@@ -114,6 +101,7 @@ export default function Responsaveis() {
         loading={loading}
         error={erro}
         onRetry={carregar}
+        onRowClick={(r) => abrirEdicao(r)}
         searchValue={(r) =>
           `${r.nome} ${r.telefone ?? ''} ` +
           (r.aluno_responsaveis ?? []).map((ar) => ar.alunos?.nome ?? '').join(' ')}
@@ -140,6 +128,14 @@ export default function Responsaveis() {
         }
       >
         <div className="flex flex-col gap-4">
+          {editando && (
+            <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
+              <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
+                      onClick={() => setRespExcluir(editando)}>
+                🗑️ Excluir responsável
+              </button>
+            </div>
+          )}
           <Field label="Nome" required error={formErros.nome}>
             <input value={form.nome} aria-invalid={!!formErros.nome}
                    onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />

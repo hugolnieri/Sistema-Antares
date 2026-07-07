@@ -135,16 +135,10 @@ export default function Professores() {
     {
       key: 'pix', header: 'Chave PIX',
       render: (p) => p.pix ? (
-        <div className="flex items-center gap-2">
-          <code className="max-w-[180px] truncate rounded bg-[var(--c-gray-bg)] px-2 py-0.5 text-xs"
-                title={p.pix}>
-            {p.pix}
-          </code>
-          <button className="btn btn-ghost !px-2 !py-0.5 text-xs"
-                  onClick={(e) => { e.stopPropagation(); copiarPix(p) }} aria-label={`Copiar PIX de ${p.nome}`}>
-            📋 Copiar
-          </button>
-        </div>
+        <button className="btn btn-ghost !px-2 !py-1 text-xs"
+                onClick={(e) => { e.stopPropagation(); copiarPix(p) }} aria-label={`Copiar PIX de ${p.nome}`}>
+          📋 Copiar PIX
+        </button>
       ) : <span className="text-[var(--c-text-soft)]">—</span>,
     },
     {

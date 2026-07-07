@@ -211,6 +211,16 @@ export default function Polos() {
     toast.success('Link do polo copiado. Envie para o professor.')
   }
 
+  const copiarPix = async (p: Polo) => {
+    if (!p.pix) return
+    try {
+      await navigator.clipboard.writeText(p.pix)
+      toast.success(`PIX do polo ${p.nome} copiado.`)
+    } catch {
+      toast.error('Não foi possível copiar. Copie manualmente: ' + p.pix)
+    }
+  }
+
   const colunas: Column<Polo>[] = [
     { key: 'nome', header: 'Nome', sortable: true },
     {
@@ -226,7 +236,15 @@ export default function Polos() {
     },
     { key: 'responsavel', header: 'Responsável', render: (p) => p.responsavel ?? '—' },
     { key: 'contato', header: 'Contato', render: (p) => p.contato ?? '—' },
-    { key: 'pix', header: 'Pix', render: (p) => p.pix ?? '—' },
+    {
+      key: 'pix', header: 'Pix',
+      render: (p) => p.pix ? (
+        <button className="btn btn-ghost !px-2 !py-1 text-xs"
+                onClick={(e) => { e.stopPropagation(); copiarPix(p) }} aria-label={`Copiar PIX de ${p.nome}`}>
+          📋 Copiar PIX
+        </button>
+      ) : <span className="text-[var(--c-text-soft)]">—</span>,
+    },
     {
       key: 'ciclo_atual', header: 'Ciclo atual', sortable: true,
       render: (p) => <span className="badge">Ciclo {p.ciclo_atual}</span>,

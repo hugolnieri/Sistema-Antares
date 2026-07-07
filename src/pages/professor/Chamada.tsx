@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { poloApi } from '../../lib/poloApi'
 import { linkWhatsApp } from '../../lib/format'
-import { Field, EmptyState } from '../../components/ui'
+import { Field, EmptyState, Modal } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { usePolo } from './PoloLayout'
 
@@ -36,18 +36,45 @@ export default function Chamada() {
   const [enviandoFotos, setEnviandoFotos] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
+  // Aluno selecionado para consulta de responsáveis (abre o popup de motivo).
+  const [consultaAluno, setConsultaAluno] = useState<{ id: string; nome: string } | null>(null)
+  const [motivoConsulta, setMotivoConsulta] = useState('')
+  const [enviandoConsulta, setEnviandoConsulta] = useState(false)
+
   const chamadaIniciada = historicoId !== null
 
-  // Mensagem automática para o contato DO POLO — pede o nome e telefone
-  // do responsável pelo aluno, já que o professor não tem mais acesso direto.
-  const mensagemConsultaResponsavel = (nomeAluno: string) =>
+  // Mensagem automática para o contato DO POLO — pede o nome e telefone do
+  // responsável pelo aluno (o professor não tem mais acesso direto), já
+  // incluindo o motivo informado no popup.
+  const mensagemConsultaResponsavel = (nomeAluno: string, motivo: string) =>
     `Olá! Sou professor(a) no polo ${dados.polo.nome}. Preciso do nome e ` +
-    `telefone do responsável pelo aluno(a) *${nomeAluno}* para contato. Pode me ajudar?`
+    `telefone do responsável pelo aluno(a) *${nomeAluno}* para contato.\n` +
+    `Motivo: ${motivo}\n` +
+    `Pode me ajudar?`
 
-  // Registra o pedido de contato no admin (não bloqueia a abertura do WhatsApp).
-  const consultarResponsaveis = (alunoId: string, alunoNome: string) => {
-    poloApi.solicitarContato(token, alunoId, alunoNome).catch(() => {})
+  const abrirConsultaResponsaveis = (alunoId: string, alunoNome: string) => {
+    setMotivoConsulta('')
+    setConsultaAluno({ id: alunoId, nome: alunoNome })
+  }
+
+  // Confirma o popup: abre o WhatsApp com o motivo na mensagem e registra o
+  // pedido no admin (o motivo some junto no painel).
+  const confirmarConsultaResponsaveis = () => {
+    if (!consultaAluno) return
+    const motivo = motivoConsulta.trim()
+    if (!motivo) {
+      toast.error('Informe o motivo da consulta.')
+      return
+    }
+    if (dados.polo.contato) {
+      window.open(linkWhatsApp(dados.polo.contato, mensagemConsultaResponsavel(consultaAluno.nome, motivo)), '_blank')
+    }
+    setEnviandoConsulta(true)
+    poloApi.solicitarContato(token, consultaAluno.id, consultaAluno.nome, motivo)
+      .catch(() => {})
+      .finally(() => setEnviandoConsulta(false))
     toast.info('O administrativo foi avisado do seu pedido de contato.')
+    setConsultaAluno(null)
   }
 
   const mudarProfessor = (i: number, valor: string) =>
@@ -105,6 +132,15 @@ export default function Chamada() {
       setCarregandoResumo(false)
     }
   }
+
+  // Reabre sozinho a aula em andamento (pendente de fotos) ao carregar/recarregar
+  // a página — sem isso, a presença já salva no servidor só reaparecia depois
+  // que o professor selecionasse a aula de novo no dropdown.
+  useEffect(() => {
+    if (numeroAula !== 0) return
+    const pendentes = dados.chamadas.filter((c) => !c.temFotos)
+    if (pendentes.length === 1) selecionarAula(pendentes[0].numeroAula)
+  }, [dados.chamadas]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const adicionarFotos = (lista: FileList | null) => {
     if (!lista) return
@@ -337,14 +373,12 @@ export default function Chamada() {
                           )}
                         </div>
                         {dados.polo.contato && (
-                          <a
-                            href={linkWhatsApp(dados.polo.contato, mensagemConsultaResponsavel(a.nome))}
-                            target="_blank" rel="noreferrer"
-                            onClick={() => consultarResponsaveis(a.id, a.nome)}
+                          <button
+                            onClick={() => abrirConsultaResponsaveis(a.id, a.nome)}
                             className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
                           >
                             💬 Consultar responsáveis
-                          </a>
+                          </button>
                         )}
                       </div>
                       <button
@@ -476,6 +510,36 @@ export default function Chamada() {
           )}
         </>
       )}
+
+      <Modal
+        open={consultaAluno !== null}
+        title="Consultar responsáveis"
+        onClose={() => setConsultaAluno(null)}
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setConsultaAluno(null)} disabled={enviandoConsulta}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={confirmarConsultaResponsaveis} disabled={enviandoConsulta}>
+              {enviandoConsulta ? 'Enviando…' : '💬 Abrir WhatsApp'}
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-[var(--c-text-soft)]">
+            Isso abre o WhatsApp do administrativo pedindo o contato do responsável por{' '}
+            <strong>{consultaAluno?.nome}</strong>. O motivo abaixo vai junto na mensagem e no painel.
+          </p>
+          <Field label="Motivo da consulta" required>
+            <textarea
+              rows={3} value={motivoConsulta} autoFocus
+              placeholder="Ex.: aluno faltou 3 aulas seguidas, preciso avisar sobre o material da próxima aula…"
+              onChange={(e) => setMotivoConsulta(e.target.value)}
+            />
+          </Field>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-07** — chore: update recent commits in CLAUDE.md (92b6006)
 - **2026-07-07** — Tema claro/escuro fica restrito ao painel administrativo (30998ea)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (1d7acb3)
 - **2026-07-07** — Auto-save de presenca na chamada; remove o botao Salvar chamada (6ff1670)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (d38c134)
-- **2026-07-07** — Link do polo automatico, coluna Pix e linha inteira clicavel no historico (ea77feb)
 
 (Updated automatically by git post-commit hook)
 

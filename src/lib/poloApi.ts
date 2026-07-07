@@ -29,8 +29,8 @@ const realPoloApi = {
 
   dados: (token: string) => post({ action: 'dados', token }) as Promise<DadosPolo>,
 
-  solicitarContato: (token: string, alunoId: string, alunoNome: string) =>
-    post({ action: 'solicitarContato', token, alunoId, alunoNome }) as Promise<{ ok: boolean }>,
+  solicitarContato: (token: string, alunoId: string, alunoNome: string, motivo: string) =>
+    post({ action: 'solicitarContato', token, alunoId, alunoNome, motivo }) as Promise<{ ok: boolean }>,
 
   // Retoma uma chamada "pendente de fotos" (já iniciada, presença já salva)
   // — usado ao selecionar de novo a aula, inclusive após recarregar a página.

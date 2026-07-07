@@ -36,6 +36,7 @@ export interface SolicitacaoContato {
   polo_id: string
   aluno_id: string | null
   aluno_nome: string
+  motivo: string | null
   status: 'pendente' | 'atendida'
   created_at: string
   polos?: { nome: string } | null

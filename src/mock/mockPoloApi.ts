@@ -102,7 +102,9 @@ export const mockPoloApi = {
     }
   },
 
-  async solicitarContato(token: string, alunoId: string, alunoNome: string): Promise<{ ok: boolean }> {
+  async solicitarContato(
+    token: string, alunoId: string, alunoNome: string, motivo: string,
+  ): Promise<{ ok: boolean }> {
     await sleep(200)
     const db = loadDB()
     const [poloId, tv] = token.split('.')
@@ -112,17 +114,22 @@ export const mockPoloApi = {
     }
     const aluno = db.alunos.find((a) => a.id === alunoId && a.polo_id === polo.id)
     const nome = aluno?.nome ?? alunoNome
-    const jaExiste = db.solicitacoes_contato.some(
+    // Se já existe um pedido pendente para o mesmo aluno, atualiza o motivo
+    // e a data (em vez de duplicar) — o admin sempre vê o pedido mais recente.
+    const existente = db.solicitacoes_contato.find(
       (s) => s.polo_id === polo.id && s.status === 'pendente' &&
         (aluno ? s.aluno_id === aluno.id : s.aluno_nome === nome),
     )
-    if (!jaExiste) {
+    if (existente) {
+      existente.motivo = motivo || null
+      existente.created_at = new Date().toISOString()
+    } else {
       db.solicitacoes_contato.push({
         id: uuid(), polo_id: polo.id, aluno_id: aluno?.id ?? null,
-        aluno_nome: nome, status: 'pendente', created_at: new Date().toISOString(),
+        aluno_nome: nome, motivo: motivo || null, status: 'pendente', created_at: new Date().toISOString(),
       })
-      saveDB(db)
     }
+    saveDB(db)
     return { ok: true }
   },
 

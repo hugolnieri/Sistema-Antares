@@ -138,7 +138,7 @@ function seed(): MockDB {
       { id: uuid(), polo_id: p1, historico_id: h1, nome: 'Sofia Andrade', status: 'pendente', created_at: diasAtras(2) },
     ],
     solicitacoes_contato: [
-      { id: uuid(), polo_id: p2, aluno_id: al[5], aluno_nome: 'Felipe Martins', status: 'pendente', created_at: diasAtras(1) },
+      { id: uuid(), polo_id: p2, aluno_id: al[5], aluno_nome: 'Felipe Martins', motivo: 'Faltou às duas últimas aulas, preciso avisar a família.', status: 'pendente', created_at: diasAtras(1) },
     ],
   }
 }
@@ -151,6 +151,7 @@ export function loadDB(): MockDB {
       // Migração: dados salvos antes de novas tabelas/colunas existirem
       if (!db.alunos_sugeridos) db.alunos_sugeridos = []
       if (!db.solicitacoes_contato) db.solicitacoes_contato = []
+      for (const s of db.solicitacoes_contato) if (s.motivo === undefined) s.motivo = null
       delete (db as any).eventos
       for (const c of db.cronograma) {
         if (c.lembrete_dias_antes === undefined) c.lembrete_dias_antes = null

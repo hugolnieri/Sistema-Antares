@@ -174,6 +174,9 @@ export default function Dashboard() {
                   <p className="text-xs text-[var(--c-text-soft)]">
                     Polo {s.polos?.nome ?? '—'} · pedido em {fmtData(s.created_at)}
                   </p>
+                  {s.motivo && (
+                    <p className="mt-1 text-sm">{s.motivo}</p>
+                  )}
                 </div>
                 <Link to="/admin/alunos" className="btn btn-ghost !px-3 !py-1 text-xs">
                   Ver alunos

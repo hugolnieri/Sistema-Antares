@@ -138,6 +138,7 @@ create table if not exists solicitacoes_contato (
   polo_id     uuid not null references polos(id) on delete cascade,
   aluno_id    uuid references alunos(id) on delete set null,
   aluno_nome  text not null,
+  motivo      text,
   status      text not null default 'pendente' check (status in ('pendente','atendida')),
   created_at  timestamptz not null default now()
 );

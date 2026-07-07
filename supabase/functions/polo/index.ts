@@ -9,6 +9,7 @@
 //   chamada FormData: token, dados(JSON), fotos[] -> { historicoId }
 //   obterChamada        { token, historicoId }                    -> retoma chamada pendente
 //   atualizarPresenca   { token, historicoId, alunoId, presente } -> auto-save por aluno
+//   solicitarContato    { token, alunoId, alunoNome, motivo }     -> pedido de contato p/ o admin
 //
 // Secrets necessários: POLO_TOKEN_SECRET (defina com `supabase secrets set`).
 // SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são injetados automaticamente.
@@ -114,7 +115,9 @@ async function acaoLogin(slug: string, senha: string) {
 }
 
 // Professor solicita os dados do responsável de um aluno — vira pendência no admin.
-async function acaoSolicitarContato(token: string, alunoId?: string, alunoNome?: string) {
+async function acaoSolicitarContato(
+  token: string, alunoId?: string, alunoNome?: string, motivo?: string,
+) {
   const polo = await requirePolo(token);
   if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
 
@@ -126,15 +129,23 @@ async function acaoSolicitarContato(token: string, alunoId?: string, alunoNome?:
     if (aluno) { idValido = aluno.id; nome = aluno.nome; }
   }
   if (!nome) return json({ error: "Aluno inválido" }, 400);
+  const motivoTexto = (motivo ?? "").trim() || null;
 
-  // Evita duplicar: se já houver pendência para o mesmo aluno, não cria outra.
-  const { count } = await supabase
-    .from("solicitacoes_contato").select("id", { count: "exact", head: true })
+  // Se já houver pendência para o mesmo aluno, atualiza o motivo e a data
+  // (em vez de duplicar) — o admin sempre vê o pedido mais recente.
+  const { data: existente } = await supabase
+    .from("solicitacoes_contato").select("id")
     .eq("polo_id", polo.id).eq("status", "pendente")
-    .eq(idValido ? "aluno_id" : "aluno_nome", idValido ?? nome);
-  if ((count ?? 0) === 0) {
+    .eq(idValido ? "aluno_id" : "aluno_nome", idValido ?? nome)
+    .maybeSingle();
+  if (existente) {
+    await supabase.from("solicitacoes_contato")
+      .update({ motivo: motivoTexto, created_at: new Date().toISOString() })
+      .eq("id", existente.id);
+  } else {
     await supabase.from("solicitacoes_contato").insert({
-      polo_id: polo.id, aluno_id: idValido, aluno_nome: nome, status: "pendente",
+      polo_id: polo.id, aluno_id: idValido, aluno_nome: nome,
+      motivo: motivoTexto, status: "pendente",
     });
   }
   return json({ ok: true });
@@ -444,7 +455,7 @@ Deno.serve(async (req) => {
       case "login": return await acaoLogin(body.slug, body.senha);
       case "dados": return await acaoDados(body.token);
       case "solicitarContato":
-        return await acaoSolicitarContato(body.token, body.alunoId, body.alunoNome);
+        return await acaoSolicitarContato(body.token, body.alunoId, body.alunoNome, body.motivo);
       case "obterChamada":
         return await acaoObterChamada(body.token, body.historicoId);
       case "atualizarPresenca":

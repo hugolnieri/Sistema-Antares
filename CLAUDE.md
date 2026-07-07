@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-07** — Linha inteira clicavel na lista de Polos; acoes movidas para dentro da edicao (6d94536)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (c591a39)
 - **2026-07-07** — Importacao em massa de alunos via planilha Excel (904b58e)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (bdd6b5f)
 - **2026-07-07** — Popup de motivo ao consultar responsaveis; reabre chamada pendente ao recarregar (349f5fb)
-- **2026-07-07** — chore: update recent commits in CLAUDE.md (92b6006)
 
 (Updated automatically by git post-commit hook)
 

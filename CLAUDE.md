@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-07** — Esconde a chave PIX na lista de Polos e Professores, so o botao de copiar (c62cf6a)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (7d44b1f)
 - **2026-07-07** — Mesma dinamica de linha clicavel em Alunos, Professores e Responsaveis (d2031f0)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (1a9a041)
 - **2026-07-07** — Linha inteira clicavel na lista de Polos; acoes movidas para dentro da edicao (6d94536)
-- **2026-07-07** — chore: update recent commits in CLAUDE.md (c591a39)
 
 (Updated automatically by git post-commit hook)
 

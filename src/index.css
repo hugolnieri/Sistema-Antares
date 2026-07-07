@@ -168,6 +168,8 @@ body {
   vertical-align: middle;
 }
 .data-table tbody tr:hover { background: var(--c-hover); }
+.data-table tbody tr.is-clickable { cursor: pointer; }
+.data-table tbody tr.is-clickable:focus-visible { outline: 2px solid var(--c-primary); outline-offset: -2px; }
 
 /* ============ SKELETON (loading) ============ */
 .skeleton {

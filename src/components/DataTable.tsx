@@ -21,12 +21,13 @@ interface Props<T> {
   filters?: ReactNode
   empty?: { icon?: string; title: string; message?: string; action?: ReactNode }
   pageSize?: number
+  onRowClick?: (row: T) => void
 }
 
 export function DataTable<T extends { id: string }>({
   columns, rows, loading, error, onRetry,
   searchValue, searchPlaceholder = 'Buscar…',
-  toolbar, filters, empty, pageSize = 20,
+  toolbar, filters, empty, pageSize = 20, onRowClick,
 }: Props<T>) {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null)
@@ -143,7 +144,16 @@ export function DataTable<T extends { id: string }>({
               </tr>
             )}
             {!loading && !error && pageRows.map((row) => (
-              <tr key={row.id}>
+              <tr
+                key={row.id}
+                className={onRowClick ? 'is-clickable' : undefined}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                tabIndex={onRowClick ? 0 : undefined}
+                role={onRowClick ? 'button' : undefined}
+                onKeyDown={onRowClick ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) }
+                } : undefined}
+              >
                 {columns.map((c) => (
                   <td key={c.key}>
                     {c.render ? c.render(row) : String((row as any)[c.key] ?? '—')}

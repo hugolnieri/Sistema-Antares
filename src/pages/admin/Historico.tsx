@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Field } from '../../components/ui'
@@ -7,6 +7,7 @@ import { fmtDataHora } from '../../lib/format'
 import type { Aluno, HistoricoAula, Polo } from '../../lib/types'
 
 export default function Historico() {
+  const navigate = useNavigate()
   const [registros, setRegistros] = useState<HistoricoAula[]>([])
   const [polos, setPolos] = useState<Pick<Polo, 'id' | 'nome'>[]>([])
   const [alunos, setAlunos] = useState<Pick<Aluno, 'id' | 'nome'>[]>([])
@@ -83,14 +84,6 @@ export default function Historico() {
           : <span className="text-[var(--c-text-soft)]">—</span>
       },
     },
-    {
-      key: 'acoes', header: '',
-      render: (h) => (
-        <Link to={`/admin/historico/${h.id}`} className="btn btn-ghost !px-2 !py-1 text-xs">
-          Abrir
-        </Link>
-      ),
-    },
   ]
 
   return (
@@ -100,6 +93,7 @@ export default function Historico() {
       loading={loading}
       error={erro}
       onRetry={carregar}
+      onRowClick={(h) => navigate(`/admin/historico/${h.id}`)}
       searchValue={(h) => `${h.polos?.nome ?? ''} ${h.professor_nome} aula ${h.numero_aula} ciclo ${h.ciclo}`}
       searchPlaceholder="Buscar por polo ou professor…"
       filters={

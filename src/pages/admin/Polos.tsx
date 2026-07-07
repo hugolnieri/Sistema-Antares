@@ -21,7 +21,6 @@ const FORM_VAZIO = {
   responsavel: '', contato: '', pix: '', observacoes: '',
   status: 'ativo' as 'ativo' | 'inativo',
   latitude: '', longitude: '',
-  cicloAtual: '1',
 }
 
 export default function Polos() {
@@ -39,7 +38,6 @@ export default function Polos() {
   const [editando, setEditando] = useState<Polo | null>(null)
   const [form, setForm] = useState(FORM_VAZIO)
   const [formErros, setFormErros] = useState<Record<string, string>>({})
-  const [slugEditado, setSlugEditado] = useState(false)
   const [salvando, setSalvando] = useState(false)
 
   // Modal de senha
@@ -68,7 +66,6 @@ export default function Polos() {
     setEditando(null)
     setForm(FORM_VAZIO)
     setFormErros({})
-    setSlugEditado(false)
     setStatusLocalizacao('ocioso')
     setDrawerAberto(true)
   }
@@ -84,23 +81,23 @@ export default function Polos() {
       pix: p.pix ?? '', observacoes: p.observacoes ?? '', status: p.status,
       latitude: p.latitude != null ? String(p.latitude) : '',
       longitude: p.longitude != null ? String(p.longitude) : '',
-      cicloAtual: String(p.ciclo_atual),
     })
     setFormErros({})
-    setSlugEditado(true)
     setStatusLocalizacao('ocioso')
     setDrawerAberto(true)
   }
 
+  // Link gerado automaticamente a partir do nome — só ao CRIAR o polo.
+  // Ao editar, o slug já existente fica congelado: o link já foi
+  // distribuído ao professor e trocar o nome não pode quebrá-lo.
   const mudarNome = (nome: string) =>
-    setForm((f) => ({ ...f, nome, slug: slugEditado ? f.slug : gerarSlug(nome) }))
+    setForm((f) => ({ ...f, nome, slug: editando ? f.slug : gerarSlug(nome) }))
 
   const validar = () => {
     const erros: Record<string, string> = {}
     if (!form.nome.trim()) erros.nome = 'Informe o nome do polo.'
-    if (!form.slug.trim()) erros.slug = 'Informe o link (slug) do polo.'
-    else if (!/^[a-z0-9-]+$/.test(form.slug)) {
-      erros.slug = 'Use apenas letras minúsculas, números e hífens.'
+    else if (!form.slug.trim()) {
+      erros.nome = 'O nome deve conter letras ou números (usados para gerar o link).'
     }
     const temLat = form.latitude.trim() !== ''
     const temLng = form.longitude.trim() !== ''
@@ -164,7 +161,6 @@ export default function Polos() {
       latitude: form.latitude.trim() ? Number(form.latitude) : null,
       longitude: form.longitude.trim() ? Number(form.longitude) : null,
       status: form.status,
-      ciclo_atual: Math.max(1, Number(form.cicloAtual) || 1),
     }
     const { error } = editando
       ? await supabase.from('polos').update(payload).eq('id', editando.id)
@@ -230,6 +226,7 @@ export default function Polos() {
     },
     { key: 'responsavel', header: 'Responsável', render: (p) => p.responsavel ?? '—' },
     { key: 'contato', header: 'Contato', render: (p) => p.contato ?? '—' },
+    { key: 'pix', header: 'Pix', render: (p) => p.pix ?? '—' },
     {
       key: 'ciclo_atual', header: 'Ciclo atual', sortable: true,
       render: (p) => <span className="badge">Ciclo {p.ciclo_atual}</span>,
@@ -325,14 +322,11 @@ export default function Polos() {
             <input value={form.nome} aria-invalid={!!formErros.nome}
                    onChange={(e) => mudarNome(e.target.value)} />
           </Field>
-          <Field label="Link (slug)" required error={formErros.slug}>
-            <input value={form.slug} aria-invalid={!!formErros.slug}
-                   onChange={(e) => { setSlugEditado(true); setForm((f) => ({ ...f, slug: e.target.value })) }} />
-          </Field>
           {form.slug && (
             <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
               Link do professor: <strong>{linkDoPolo(form.slug)}</strong>
-              <br />O link é estável — trocar a senha não muda o link.
+              <br />Gerado automaticamente a partir do nome — trocar a senha
+              não muda o link, e ele não muda mais depois de criado.
             </p>
           )}
           <div className="rounded-lg border border-[var(--c-border)] p-3">
@@ -436,14 +430,10 @@ export default function Polos() {
             </select>
           </Field>
           {editando && (
-            <Field label="Ciclo atual">
-              <input type="number" min={1} value={form.cicloAtual}
-                     onChange={(e) => setForm((f) => ({ ...f, cicloAtual: e.target.value }))} />
-              <p className="mt-1 text-xs text-[var(--c-text-soft)]">
-                Avança automaticamente ao registrar a Aula 18. Só corrija manualmente
-                em caso de erro de operação.
-              </p>
-            </Field>
+            <p className="text-xs text-[var(--c-text-soft)]">
+              Ciclo atual: <strong>{editando.ciclo_atual}</strong> — avança
+              automaticamente quando as 18 aulas do ciclo têm foto.
+            </p>
           )}
         </div>
       </Drawer>

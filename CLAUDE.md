@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-07** — Auto-save de presenca na chamada; remove o botao Salvar chamada (6ff1670)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (d38c134)
 - **2026-07-07** — Link do polo automatico, coluna Pix e linha inteira clicavel no historico (ea77feb)
 - **2026-07-07** — chore: update recent commits in CLAUDE.md (8ca7f6a)
 - **2026-07-07** — fix: use ES modules in update-claude-md.js script (9aa0b4a)
-- **2026-07-07** — feat: auto-update CLAUDE.md with recent commits via git hook (fce693d)
 
 (Updated automatically by git post-commit hook)
 

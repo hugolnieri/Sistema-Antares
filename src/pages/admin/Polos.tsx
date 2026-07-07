@@ -216,12 +216,12 @@ export default function Polos() {
     {
       key: 'slug', header: 'Link do professor',
       render: (p) => (
-        <div className="flex items-center gap-2">
-          <code className="rounded bg-[var(--c-gray-bg)] px-2 py-0.5 text-xs">/{p.slug}</code>
-          <button className="btn btn-ghost !px-2 !py-0.5 text-xs" onClick={() => copiarLink(p)}>
-            Copiar link
-          </button>
-        </div>
+        <button
+          className="btn btn-ghost !px-2 !py-1 text-xs"
+          onClick={(e) => { e.stopPropagation(); copiarLink(p) }}
+        >
+          🔗 Copiar link
+        </button>
       ),
     },
     { key: 'responsavel', header: 'Responsável', render: (p) => p.responsavel ?? '—' },
@@ -231,28 +231,16 @@ export default function Polos() {
       key: 'ciclo_atual', header: 'Ciclo atual', sortable: true,
       render: (p) => <span className="badge">Ciclo {p.ciclo_atual}</span>,
     },
-    { key: 'status', header: 'Status', sortable: true, render: (p) => <StatusBadge status={p.status} /> },
     {
-      key: 'acoes', header: '',
+      key: 'status', header: 'Status', sortable: true,
       render: (p) => (
-        <div className="flex justify-end gap-1">
-          <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => abrirEdicao(p)}>
-            Editar
-          </button>
-          <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => setPoloSenha(p)}>
-            Senha
-          </button>
-          <Link to={`/admin/alunos?polo=${p.id}`} className="btn btn-ghost !px-2 !py-1 text-xs">
-            Alunos
-          </Link>
-          <Link to={`/admin/historico?polo=${p.id}`} className="btn btn-ghost !px-2 !py-1 text-xs">
-            Histórico
-          </Link>
-          <button className="btn btn-ghost !px-2 !py-1 text-xs text-[var(--c-danger)]"
-                  onClick={() => setPoloInativar(p)}>
-            {p.status === 'ativo' ? 'Inativar' : 'Reativar'}
-          </button>
-        </div>
+        <button
+          className="border-0 bg-transparent p-0 cursor-pointer hover:opacity-80"
+          title={p.status === 'ativo' ? 'Clique para inativar o polo' : 'Clique para reativar o polo'}
+          onClick={(e) => { e.stopPropagation(); setPoloInativar(p) }}
+        >
+          <StatusBadge status={p.status} />
+        </button>
       ),
     },
   ]
@@ -292,6 +280,7 @@ export default function Polos() {
         loading={loading}
         error={erro}
         onRetry={carregar}
+        onRowClick={(p) => abrirEdicao(p)}
         searchValue={(p) => `${p.nome} ${p.slug} ${p.responsavel ?? ''}`}
         searchPlaceholder="Buscar polo…"
         toolbar={<button className="btn btn-primary" onClick={abrirNovo}>+ Novo polo</button>}
@@ -328,6 +317,19 @@ export default function Polos() {
               <br />Gerado automaticamente a partir do nome — trocar a senha
               não muda o link, e ele não muda mais depois de criado.
             </p>
+          )}
+          {editando && (
+            <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
+              <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => setPoloSenha(editando)}>
+                🔑 Alterar senha
+              </button>
+              <Link to={`/admin/alunos?polo=${editando.id}`} className="btn btn-ghost !py-1.5 text-sm">
+                🎓 Ver alunos
+              </Link>
+              <Link to={`/admin/historico?polo=${editando.id}`} className="btn btn-ghost !py-1.5 text-sm">
+                🕘 Ver histórico
+              </Link>
+            </div>
           )}
           <div className="rounded-lg border border-[var(--c-border)] p-3">
             <p className="mb-3 text-sm font-semibold">📍 Endereço</p>

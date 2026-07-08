@@ -10,12 +10,9 @@ export interface StatusDef {
 }
 
 export const STATUS: Record<string, StatusDef> = {
-  // Genéricos (polos, alunos, materiais)
+  // Genéricos (polos, alunos, professores, materiais)
   ativo:      { label: 'Ativo',      color: 'green', icon: '●' },
   inativo:    { label: 'Inativo',    color: 'gray',  icon: '○' },
-  // Professores
-  disponivel: { label: 'Disponível', color: 'green', icon: '●' },
-  ocupado:    { label: 'Ocupado',    color: 'amber', icon: '◐' },
   // Cronograma
   agendada:   { label: 'Agendada',   color: 'blue',  icon: '◷' },
   concluida:  { label: 'Concluída',  color: 'green', icon: '✓' },

@@ -7,7 +7,7 @@ import type { Polo, Professor } from '../../lib/types'
 
 const FORM_VAZIO = {
   nome: '', contato: '', pix: '', observacoes: '',
-  status: 'disponivel' as 'disponivel' | 'ocupado',
+  status: 'ativo' as 'ativo' | 'inativo',
   polosIds: [] as string[],
 }
 
@@ -97,11 +97,12 @@ export default function Professores() {
   const alternarAtivo = async () => {
     if (!profInativar) return
     setSalvando(true)
+    const novoStatus = profInativar.status === 'ativo' ? 'inativo' : 'ativo'
     const { error } = await supabase
-      .from('professores').update({ ativo: !profInativar.ativo }).eq('id', profInativar.id)
+      .from('professores').update({ status: novoStatus }).eq('id', profInativar.id)
     setSalvando(false)
     if (error) { toast.error('Erro ao alterar o status.'); return }
-    toast.success(profInativar.ativo ? 'Professor inativado.' : 'Professor reativado.')
+    toast.success(novoStatus === 'inativo' ? 'Professor inativado.' : 'Professor reativado.')
     setProfInativar(null)
     carregar()
   }
@@ -128,7 +129,7 @@ export default function Professores() {
     {
       key: 'nome', header: 'Professor', sortable: true,
       render: (p) => (
-        <span className={p.ativo ? '' : 'text-[var(--c-text-soft)] line-through'}>{p.nome}</span>
+        <span className={p.status === 'ativo' ? '' : 'text-[var(--c-text-soft)] line-through'}>{p.nome}</span>
       ),
     },
     { key: 'contato', header: 'Contato', render: (p) => p.contato ?? '—' },
@@ -155,17 +156,17 @@ export default function Professores() {
       render: (p) => (
         <button
           className="border-0 bg-transparent p-0 cursor-pointer hover:opacity-80"
-          title={p.ativo ? 'Clique para inativar o professor' : 'Clique para reativar o professor'}
+          title={p.status === 'ativo' ? 'Clique para inativar o professor' : 'Clique para reativar o professor'}
           onClick={(e) => { e.stopPropagation(); setProfInativar(p) }}
         >
-          {p.ativo ? <StatusBadge status={p.status} /> : <StatusBadge status="inativo" />}
+          <StatusBadge status={p.status} />
         </button>
       ),
     },
   ]
 
   const polosComProfessor = new Set(
-    professores.filter((p) => p.ativo).flatMap((p) => (p.professor_polos ?? []).map((pp) => pp.polo_id)),
+    professores.filter((p) => p.status === 'ativo').flatMap((p) => (p.professor_polos ?? []).map((pp) => pp.polo_id)),
   )
   const polosSemProfessor = polos.filter((p) => !polosComProfessor.has(p.id))
 
@@ -229,9 +230,9 @@ export default function Professores() {
           </Field>
           <Field label="Status">
             <select value={form.status}
-                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as 'disponivel' | 'ocupado' }))}>
-              <option value="disponivel">Disponível</option>
-              <option value="ocupado">Ocupado</option>
+                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as 'ativo' | 'inativo' }))}>
+              <option value="ativo">Ativo</option>
+              <option value="inativo">Inativo</option>
             </select>
           </Field>
           <Field label="Polos em que atua">
@@ -261,11 +262,11 @@ export default function Professores() {
 
       <ConfirmModal
         open={!!profInativar}
-        title={profInativar?.ativo ? 'Inativar professor' : 'Reativar professor'}
-        message={<>Deseja {profInativar?.ativo ? 'inativar' : 'reativar'} o professor{' '}
+        title={profInativar?.status === 'ativo' ? 'Inativar professor' : 'Reativar professor'}
+        message={<>Deseja {profInativar?.status === 'ativo' ? 'inativar' : 'reativar'} o professor{' '}
           <strong>{profInativar?.nome}</strong>?</>}
-        confirmLabel={profInativar?.ativo ? 'Inativar' : 'Reativar'}
-        danger={!!profInativar?.ativo}
+        confirmLabel={profInativar?.status === 'ativo' ? 'Inativar' : 'Reativar'}
+        danger={profInativar?.status === 'ativo'}
         loading={salvando}
         onConfirm={alternarAtivo}
         onClose={() => setProfInativar(null)}

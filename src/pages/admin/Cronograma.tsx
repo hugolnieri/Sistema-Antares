@@ -50,7 +50,7 @@ export default function Cronograma() {
         .select('id, polo_id, numero_aula, professor_nome, data_hora, polos(nome)')
         .order('data_hora', { ascending: false }),
       supabase.from('polos').select('id, nome').eq('status', 'ativo').order('nome'),
-      supabase.from('professores').select('id, nome').eq('ativo', true).order('nome'),
+      supabase.from('professores').select('id, nome').eq('status', 'ativo').order('nome'),
     ])
     if (itensRes.error) setErro('Não foi possível carregar o cronograma.')
     else {

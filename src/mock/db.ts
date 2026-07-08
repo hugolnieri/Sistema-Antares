@@ -52,10 +52,10 @@ function seed(): MockDB {
       { id: p4, nome: 'Parque das Flores', slug: 'parque-das-flores', cep: '01024-000', logradouro: 'Rua da Cantareira', numero: '306', complemento: null, bairro: 'Centro', cidade: 'São Paulo', estado: 'SP', responsavel: null, contato: null, pix: null, observacoes: 'Polo pausado neste semestre.', latitude: -23.5416, longitude: -46.6294, senha: '1234', token_version: 1, ciclo_atual: 1, status: 'inativo', created_at: diasAtras(120) },
     ],
     professores: [
-      { id: pr1, nome: 'Ana Lima', contato: '(11) 95555-0001', pix: 'ana.lima@pix.com', status: 'disponivel', ativo: true, observacoes: null, created_at: diasAtras(85) },
-      { id: pr2, nome: 'Bruno Castro', contato: '(11) 95555-0002', pix: null, status: 'ocupado', ativo: true, observacoes: 'Atende dois polos.', created_at: diasAtras(70) },
-      { id: pr3, nome: 'Carlos Nunes', contato: '(11) 95555-0003', pix: null, status: 'disponivel', ativo: true, observacoes: 'Aguardando vínculo com polo.', created_at: diasAtras(30) },
-      { id: pr4, nome: 'Diana Prado', contato: '(11) 95555-0004', pix: null, status: 'disponivel', ativo: false, observacoes: 'Afastada temporariamente.', created_at: diasAtras(100) },
+      { id: pr1, nome: 'Ana Lima', contato: '(11) 95555-0001', pix: 'ana.lima@pix.com', status: 'ativo', observacoes: null, created_at: diasAtras(85) },
+      { id: pr2, nome: 'Bruno Castro', contato: '(11) 95555-0002', pix: null, status: 'ativo', observacoes: 'Atende dois polos.', created_at: diasAtras(70) },
+      { id: pr3, nome: 'Carlos Nunes', contato: '(11) 95555-0003', pix: null, status: 'ativo', observacoes: 'Aguardando vínculo com polo.', created_at: diasAtras(30) },
+      { id: pr4, nome: 'Diana Prado', contato: '(11) 95555-0004', pix: null, status: 'inativo', observacoes: 'Afastada temporariamente.', created_at: diasAtras(100) },
     ],
     professor_polos: [
       { professor_id: pr1, polo_id: p1 },
@@ -159,6 +159,13 @@ export function loadDB(): MockDB {
       }
       for (const p of db.polos) if (p.ciclo_atual === undefined) p.ciclo_atual = 1
       for (const h of db.historico_aulas) if (h.ciclo === undefined) h.ciclo = 1
+      // Professor: "disponivel"/"ocupado" + campo "ativo" separado viraram um
+      // único status "ativo"/"inativo" (igual polos/alunos/materiais).
+      for (const p of db.professores) {
+        if ((p as any).ativo === false) p.status = 'inativo'
+        else if (p.status === 'disponivel' || p.status === 'ocupado') p.status = 'ativo'
+        delete (p as any).ativo
+      }
       return db
     }
   } catch { /* seed abaixo */ }

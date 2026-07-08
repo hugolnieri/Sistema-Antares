@@ -38,8 +38,7 @@ create table if not exists professores (
   nome        text not null,
   contato     text,
   pix         text,
-  status      text not null default 'disponivel' check (status in ('disponivel','ocupado')),
-  ativo       boolean not null default true,
+  status      text not null default 'ativo' check (status in ('ativo','inativo')),
   observacoes text,
   created_at  timestamptz not null default now()
 );

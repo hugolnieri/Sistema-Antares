@@ -47,8 +47,7 @@ export interface Professor {
   nome: string
   contato: string | null
   pix: string | null
-  status: 'disponivel' | 'ocupado'
-  ativo: boolean
+  status: 'ativo' | 'inativo'
   observacoes: string | null
   created_at: string
   professor_polos?: { polo_id: string; polos?: { nome: string } | null }[]

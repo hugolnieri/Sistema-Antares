@@ -47,7 +47,7 @@ export default function Dashboard() {
     Promise.all([
       supabase.from('polos').select('id', { count: 'exact', head: true }).eq('status', 'ativo'),
       supabase.from('alunos').select('id', { count: 'exact', head: true }).eq('status', 'ativo'),
-      supabase.from('professores').select('id', { count: 'exact', head: true }).eq('ativo', true),
+      supabase.from('professores').select('id', { count: 'exact', head: true }).eq('status', 'ativo'),
       supabase.from('historico_aulas').select('id', { count: 'exact', head: true })
         .gte('data_hora', inicioMes.toISOString()),
       supabase.from('historico_aulas')

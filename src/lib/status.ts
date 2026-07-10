@@ -27,6 +27,8 @@ export const STATUS: Record<string, StatusDef> = {
   atendida:   { label: 'Atendida',   color: 'green', icon: '✓' },
   // Lembrete vinculado a uma aula (ex.: preparar materiais dias antes)
   lembrete:   { label: 'Lembrete',   color: 'amber', icon: '📄' },
+  // Lembrete de enviar o relatório da aula às famílias (com botão de WhatsApp)
+  envio_relatorio: { label: 'Enviar relatório', color: 'green', icon: '💬' },
   // Aula realizada (histórico) exibida no calendário
   realizada:  { label: 'Realizada',  color: 'green', icon: '✓' },
 }

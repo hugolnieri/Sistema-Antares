@@ -96,20 +96,20 @@ function seed(): MockDB {
       { aluno_id: al[9], responsavel_id: r[6], parentesco: 'Mãe' },
     ],
     materiais: [
-      { id: uuid(), numero_aula: 1, titulo: 'Boas-vindas e apresentação', descricao: 'Primeira aula do programa.', arquivo_path: 'aula-01.pdf', status: 'ativo', created_at: diasAtras(80) },
-      { id: uuid(), numero_aula: 2, titulo: 'Fundamentos — parte 1', descricao: null, arquivo_path: 'aula-02.pdf', status: 'ativo', created_at: diasAtras(80) },
-      { id: uuid(), numero_aula: 3, titulo: 'Fundamentos — parte 2', descricao: null, arquivo_path: 'aula-03.pdf', status: 'ativo', created_at: diasAtras(80) },
-      { id: uuid(), numero_aula: 4, titulo: 'Atividades práticas', descricao: 'Levar material impresso.', arquivo_path: 'aula-04.pdf', status: 'ativo', created_at: diasAtras(75) },
-      { id: uuid(), numero_aula: 5, titulo: 'Revisão do módulo 1', descricao: null, arquivo_path: 'aula-05.pdf', status: 'ativo', created_at: diasAtras(70) },
-      { id: uuid(), numero_aula: 6, titulo: 'Aula em revisão (oculta)', descricao: 'Material sendo atualizado.', arquivo_path: 'aula-06.pdf', status: 'inativo', created_at: diasAtras(65) },
+      { id: uuid(), numero_aula: 1, titulo: 'Boas-vindas e apresentação', descricao: 'Primeira aula do programa.', arquivo_path: 'aula-01.pdf', relatorio: 'Olá, famílias! 👋 Hoje foi a aula de boas-vindas: apresentamos o programa, a equipe e combinamos a rotina das aulas. As crianças participaram animadas! Qualquer dúvida, estamos à disposição.', status: 'ativo', created_at: diasAtras(80) },
+      { id: uuid(), numero_aula: 2, titulo: 'Fundamentos — parte 1', descricao: null, arquivo_path: 'aula-02.pdf', relatorio: null, status: 'ativo', created_at: diasAtras(80) },
+      { id: uuid(), numero_aula: 3, titulo: 'Fundamentos — parte 2', descricao: null, arquivo_path: 'aula-03.pdf', relatorio: 'Olá, famílias! 📚 Na aula de hoje trabalhamos os fundamentos (parte 2) com uma dinâmica em grupo. Todos concluíram a atividade e demonstraram bastante interesse. Continuem incentivando em casa!', status: 'ativo', created_at: diasAtras(80) },
+      { id: uuid(), numero_aula: 4, titulo: 'Atividades práticas', descricao: 'Levar material impresso.', arquivo_path: 'aula-04.pdf', relatorio: null, status: 'ativo', created_at: diasAtras(75) },
+      { id: uuid(), numero_aula: 5, titulo: 'Revisão do módulo 1', descricao: null, arquivo_path: 'aula-05.pdf', relatorio: null, status: 'ativo', created_at: diasAtras(70) },
+      { id: uuid(), numero_aula: 6, titulo: 'Aula em revisão (oculta)', descricao: 'Material sendo atualizado.', arquivo_path: 'aula-06.pdf', relatorio: null, status: 'inativo', created_at: diasAtras(65) },
     ],
     cronograma: [
-      { id: uuid(), polo_id: p1, numero_aula: 3, data: dataEm(-7), professor_id: pr1, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(20) },
-      { id: uuid(), polo_id: p2, numero_aula: 1, data: dataEm(-5), professor_id: pr2, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(20) },
-      { id: uuid(), polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Organizar materiais', created_at: diasAtras(10) },
-      { id: uuid(), polo_id: p3, numero_aula: 1, data: dataEm(3), professor_id: null, observacoes: 'Professor a definir.', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Imprimir listas de presença', created_at: diasAtras(8) },
-      { id: uuid(), polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(5) },
-      { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, created_at: diasAtras(3) },
+      { id: uuid(), polo_id: p1, numero_aula: 3, data: dataEm(-7), professor_id: pr1, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: dataEm(1), created_at: diasAtras(20) },
+      { id: uuid(), polo_id: p2, numero_aula: 1, data: dataEm(-5), professor_id: pr2, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: null, created_at: diasAtras(20) },
+      { id: uuid(), polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Organizar materiais', relatorio_lembrete_data: null, created_at: diasAtras(10) },
+      { id: uuid(), polo_id: p3, numero_aula: 1, data: dataEm(3), professor_id: null, observacoes: 'Professor a definir.', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Imprimir listas de presença', relatorio_lembrete_data: null, created_at: diasAtras(8) },
+      { id: uuid(), polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: null, created_at: diasAtras(5) },
+      { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: null, created_at: diasAtras(3) },
     ],
     historico_aulas: [
       { id: h1, polo_id: p1, numero_aula: 3, ciclo: 1, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
@@ -156,7 +156,9 @@ export function loadDB(): MockDB {
       for (const c of db.cronograma) {
         if (c.lembrete_dias_antes === undefined) c.lembrete_dias_antes = null
         if (c.lembrete_texto === undefined) c.lembrete_texto = null
+        if (c.relatorio_lembrete_data === undefined) c.relatorio_lembrete_data = null
       }
+      for (const m of db.materiais) if (m.relatorio === undefined) m.relatorio = null
       for (const p of db.polos) if (p.ciclo_atual === undefined) p.ciclo_atual = 1
       for (const h of db.historico_aulas) if (h.ciclo === undefined) h.ciclo = 1
       // Professor: "disponivel"/"ocupado" + campo "ativo" separado viraram um

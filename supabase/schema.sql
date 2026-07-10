@@ -80,6 +80,7 @@ create table if not exists materiais (
   titulo       text not null,
   descricao    text,
   arquivo_path text,                         -- caminho no bucket 'materiais'
+  relatorio    text,                         -- relatório reutilizável da aula (enviado às famílias)
   status       text not null default 'ativo' check (status in ('ativo','inativo')),
   created_at   timestamptz not null default now()
 );
@@ -94,6 +95,7 @@ create table if not exists cronograma (
   status              text not null default 'agendada' check (status in ('agendada','concluida','cancelada')),
   lembrete_dias_antes int,   -- ex.: 2 = lembrar 2 dias antes da aula
   lembrete_texto      text, -- ex.: "Organizar materiais"
+  relatorio_lembrete_data date, -- se preenchida, lembra de enviar o relatório da aula nesse dia (ex.: aula sáb -> seg)
   created_at          timestamptz not null default now()
 );
 

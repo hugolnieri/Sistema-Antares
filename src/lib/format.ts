@@ -33,10 +33,22 @@ export const linkWhatsApp = (telefone: string, mensagem?: string): string => {
   return `https://wa.me/55${numero}${texto}`
 }
 
+// Link do WhatsApp sem destinatário fixo: abre o app com a mensagem pronta e
+// deixa o usuário escolher o contato/grupo (ex.: grupo das famílias).
+export const linkWhatsAppTexto = (mensagem: string): string =>
+  `https://wa.me/?text=${encodeURIComponent(mensagem)}`
+
 // Subtrai dias de uma data YYYY-MM-DD sem passar por fuso horário.
 export const subtrairDias = (dataISO: string, dias: number): string => {
   const [ano, mes, dia] = dataISO.split('-').map(Number)
   const d = new Date(ano, mes - 1, dia - dias)
+  return d.toLocaleDateString('en-CA')
+}
+
+// Soma dias a uma data YYYY-MM-DD sem passar por fuso horário.
+export const adicionarDias = (dataISO: string, dias: number): string => {
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  const d = new Date(ano, mes - 1, dia + dias)
   return d.toLocaleDateString('en-CA')
 }
 

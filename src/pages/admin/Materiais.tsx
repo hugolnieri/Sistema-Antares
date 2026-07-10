@@ -14,7 +14,7 @@ export default function Materiais() {
 
   const [drawerAberto, setDrawerAberto] = useState(false)
   const [numeroAula, setNumeroAula] = useState(1)
-  const [form, setForm] = useState({ titulo: '', descricao: '', status: 'ativo' as 'ativo' | 'inativo' })
+  const [form, setForm] = useState({ titulo: '', descricao: '', relatorio: '', status: 'ativo' as 'ativo' | 'inativo' })
   const [arquivo, setArquivo] = useState<File | null>(null)
   const [formErros, setFormErros] = useState<Record<string, string>>({})
   const [salvando, setSalvando] = useState(false)
@@ -40,6 +40,7 @@ export default function Materiais() {
     setForm({
       titulo: m?.titulo ?? `Aula ${n}`,
       descricao: m?.descricao ?? '',
+      relatorio: m?.relatorio ?? '',
       status: m?.status ?? 'ativo',
     })
     setArquivo(null)
@@ -86,6 +87,7 @@ export default function Materiais() {
       numero_aula: numeroAula,
       titulo: form.titulo.trim(),
       descricao: form.descricao.trim() || null,
+      relatorio: form.relatorio.trim() || null,
       arquivo_path: arquivoPath,
       status: form.status,
     }
@@ -138,6 +140,13 @@ export default function Materiais() {
                 {m?.descricao && (
                   <p className="text-xs text-[var(--c-text-soft)]">{m.descricao}</p>
                 )}
+                {!loading && (
+                  <span className={`badge !px-1.5 !py-0 text-[11px] ${
+                    m?.relatorio ? 'badge--green' : 'badge--gray'}`}>
+                    <span aria-hidden="true">{m?.relatorio ? '💬' : '○'}</span>{' '}
+                    {m?.relatorio ? 'Relatório pronto' : 'Sem relatório'}
+                  </span>
+                )}
                 <div className="mt-auto flex gap-2 pt-2">
                   {m?.arquivo_path && (
                     <button className="btn btn-ghost !py-1 text-xs" onClick={() => abrirPdf(m)}>
@@ -177,6 +186,15 @@ export default function Materiais() {
             <textarea rows={3} value={form.descricao}
                       onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} />
           </Field>
+          <Field label="Relatório da aula (para enviar às famílias)">
+            <textarea rows={5} value={form.relatorio}
+                      placeholder="Texto padrão que será enviado no grupo das famílias após a aula. Ex.: resumo do que foi trabalhado, recados…"
+                      onChange={(e) => setForm((f) => ({ ...f, relatorio: e.target.value }))} />
+          </Field>
+          <p className="-mt-2 text-xs text-[var(--c-text-soft)]">
+            Fica salvo nesta aula e é reaproveitado a cada ciclo. Ao agendar a aula no
+            cronograma, marque o lembrete para enviá-lo no WhatsApp.
+          </p>
           <Field label="Arquivo PDF" error={formErros.arquivo || undefined}>
             <input ref={fileInput} type="file" accept="application/pdf"
                    aria-invalid={!!formErros.arquivo}

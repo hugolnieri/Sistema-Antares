@@ -87,6 +87,7 @@ export interface Material {
   titulo: string
   descricao: string | null
   arquivo_path: string | null
+  relatorio: string | null
   status: 'ativo' | 'inativo'
   created_at: string
 }
@@ -101,6 +102,7 @@ export interface CronogramaItem {
   status: 'agendada' | 'concluida' | 'cancelada'
   lembrete_dias_antes: number | null
   lembrete_texto: string | null
+  relatorio_lembrete_data: string | null
   created_at: string
   polos?: { nome: string } | null
   professores?: { nome: string } | null

@@ -52,6 +52,19 @@ export const adicionarDias = (dataISO: string, dias: number): string => {
   return d.toLocaleDateString('en-CA')
 }
 
+// Data de hoje em YYYY-MM-DD no fuso local.
+export const hojeISO = (): string => new Date().toLocaleDateString('en-CA')
+
+// Próxima segunda-feira estritamente após a data base (YYYY-MM-DD).
+// Ex.: aula no sábado -> retorna a segunda seguinte (+2 dias).
+export const proximaSegunda = (dataISO: string): string => {
+  const [ano, mes, dia] = dataISO.split('-').map(Number)
+  const d = new Date(ano, mes - 1, dia)
+  const ate = ((1 - d.getDay() + 7) % 7) || 7 // dias até a próxima segunda (nunca 0)
+  d.setDate(d.getDate() + ate)
+  return d.toLocaleDateString('en-CA')
+}
+
 interface EnderecoEstruturado {
   logradouro?: string | null
   numero?: string | null

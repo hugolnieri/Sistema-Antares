@@ -5,7 +5,7 @@ import { DataTable, type Column } from '../../components/DataTable'
 import { CalendarMonth, type CalendarItem } from '../../components/CalendarMonth'
 import { Drawer, Field, ConfirmModal, Modal, StatusBadge } from '../../components/ui'
 import { useToast } from '../../components/Toast'
-import { fmtData, subtrairDias, adicionarDias, linkWhatsAppTexto } from '../../lib/format'
+import { fmtData, subtrairDias, adicionarDias, hojeISO, proximaSegunda, linkWhatsAppTexto } from '../../lib/format'
 import { statusDe } from '../../lib/status'
 import type { CronogramaItem, HistoricoAula, Material, Polo, Professor } from '../../lib/types'
 
@@ -17,6 +17,15 @@ const AULA_VAZIA = {
 }
 
 const OPCOES_LEMBRETE = [1, 2, 3, 5, 7, 10, 14]
+
+// Sugestões rápidas para a data do lembrete de envio do relatório.
+// `base` é a data da aula (ou hoje, se ainda não escolhida).
+const OPCOES_DATA_RELATORIO: { label: string; calc: (base: string) => string }[] = [
+  { label: 'Próxima segunda', calc: (b) => proximaSegunda(b) },
+  { label: '2 dias depois', calc: (b) => adicionarDias(b, 2) },
+  { label: '3 dias depois', calc: (b) => adicionarDias(b, 3) },
+  { label: '1 semana depois', calc: (b) => adicionarDias(b, 7) },
+]
 
 export default function Cronograma() {
   const [itens, setItens] = useState<CronogramaItem[]>([])
@@ -347,6 +356,52 @@ export default function Cronograma() {
           </Field>
 
           <div className="rounded-lg border border-[var(--c-border)] p-3">
+            <label className="flex items-start gap-2">
+              <input type="checkbox" className="mt-0.5" checked={aula.relatorio_lembrete}
+                     onChange={(e) => setAula((f) => ({
+                       ...f,
+                       relatorio_lembrete: e.target.checked,
+                       relatorio_lembrete_data: e.target.checked
+                         ? (f.relatorio_lembrete_data || proximaSegunda(f.data || hojeISO()))
+                         : f.relatorio_lembrete_data,
+                     }))} />
+              <span className="text-sm font-semibold">💬 Lembrar de enviar o relatório desta aula</span>
+            </label>
+            <p className="mb-3 mt-1 text-xs text-[var(--c-text-soft)]">
+              Cria um lembrete no calendário na data escolhida, com botão para enviar o
+              relatório no WhatsApp. Ex.: aula no sábado, relatório na segunda-feira. O texto
+              vem do relatório cadastrado em Materiais para esta aula.
+            </p>
+            {aula.relatorio_lembrete && (
+              <>
+                <p className="mb-1.5 text-xs font-medium text-[var(--c-text-soft)]">
+                  Sugestões {aula.data ? 'a partir da data da aula' : '(defina a data da aula acima)'}:
+                </p>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {OPCOES_DATA_RELATORIO.map((opt) => {
+                    const valor = opt.calc(aula.data || hojeISO())
+                    const ativo = aula.relatorio_lembrete_data === valor
+                    return (
+                      <button key={opt.label} type="button"
+                              title={fmtData(valor)}
+                              onClick={() => setAula((f) => ({ ...f, relatorio_lembrete_data: valor }))}
+                              className={`badge cursor-pointer !py-1 text-xs transition-opacity hover:opacity-80 ${
+                                ativo ? 'badge--green' : 'badge--gray'}`}>
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <Field label="Data do lembrete" required error={aulaErros.relatorio_lembrete_data}>
+                  <input type="date" value={aula.relatorio_lembrete_data}
+                         aria-invalid={!!aulaErros.relatorio_lembrete_data}
+                         onChange={(e) => setAula((f) => ({ ...f, relatorio_lembrete_data: e.target.value }))} />
+                </Field>
+              </>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-[var(--c-border)] p-3">
             <p className="mb-2 text-sm font-semibold">📄 Lembrete (opcional)</p>
             <p className="mb-3 text-xs text-[var(--c-text-soft)]">
               Ex.: lembrar 2 dias antes de organizar os materiais. O lembrete
@@ -369,32 +424,6 @@ export default function Cronograma() {
                        onChange={(e) => setAula((f) => ({ ...f, lembrete_texto: e.target.value }))} />
               </Field>
             </div>
-          </div>
-
-          <div className="rounded-lg border border-[var(--c-border)] p-3">
-            <label className="flex items-start gap-2">
-              <input type="checkbox" className="mt-0.5" checked={aula.relatorio_lembrete}
-                     onChange={(e) => setAula((f) => ({
-                       ...f,
-                       relatorio_lembrete: e.target.checked,
-                       relatorio_lembrete_data: e.target.checked
-                         ? (f.relatorio_lembrete_data || (f.data ? adicionarDias(f.data, 2) : ''))
-                         : f.relatorio_lembrete_data,
-                     }))} />
-              <span className="text-sm font-semibold">💬 Lembrar de enviar o relatório desta aula</span>
-            </label>
-            <p className="mb-3 mt-1 text-xs text-[var(--c-text-soft)]">
-              Cria um lembrete no calendário na data escolhida, com botão para enviar o
-              relatório no WhatsApp. Ex.: aula no sábado, relatório na segunda-feira. O texto
-              vem do relatório cadastrado em Materiais para esta aula.
-            </p>
-            {aula.relatorio_lembrete && (
-              <Field label="Data do lembrete" required error={aulaErros.relatorio_lembrete_data}>
-                <input type="date" value={aula.relatorio_lembrete_data}
-                       aria-invalid={!!aulaErros.relatorio_lembrete_data}
-                       onChange={(e) => setAula((f) => ({ ...f, relatorio_lembrete_data: e.target.value }))} />
-              </Field>
-            )}
           </div>
         </div>
       </Drawer>

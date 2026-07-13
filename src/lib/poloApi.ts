@@ -32,6 +32,11 @@ const realPoloApi = {
   solicitarContato: (token: string, alunoId: string, alunoNome: string, motivo: string) =>
     post({ action: 'solicitarContato', token, alunoId, alunoNome, motivo }) as Promise<{ ok: boolean }>,
 
+  // Sugere o cadastro de um aluno fora da lista. Funciona antes e depois de a
+  // chamada existir (historicoId é opcional) — vira pendência p/ o admin aprovar.
+  sugerirAluno: (token: string, nome: string, historicoId?: string) =>
+    post({ action: 'sugerirAluno', token, nome, historicoId }) as Promise<{ ok: boolean }>,
+
   // Retoma uma chamada "pendente de fotos" (já iniciada, presença já salva)
   // — usado ao selecionar de novo a aula, inclusive após recarregar a página.
   obterChamada: (token: string, historicoId: string) =>

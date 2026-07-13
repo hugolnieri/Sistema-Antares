@@ -25,8 +25,11 @@ export default function Chamada() {
   const [presencas, setPresencas] = useState<Record<string, boolean>>({})
   const [relatorio, setRelatorio] = useState('')
   const [fotos, setFotos] = useState<File[]>([])
-  const [alunosExtras, setAlunosExtras] = useState<string[]>([])
+  // Sugestões de aluno enviadas nesta sessão (só para exibir "✓ enviado").
+  // O envio é imediato (poloApi.sugerirAluno), funciona antes e depois da chamada.
+  const [sugeridos, setSugeridos] = useState<string[]>([])
   const [novoExtra, setNovoExtra] = useState('')
+  const [enviandoSugestao, setEnviandoSugestao] = useState(false)
   const [erros, setErros] = useState<Record<string, string>>({})
   // Criando a chamada (1º toggle) trava todos os botões pra evitar criar
   // duas vezes se o professor clicar em mais de um aluno rapidamente.
@@ -89,8 +92,27 @@ export default function Chamada() {
     setPresencas({})
     setRelatorio('')
     setFotos([])
-    setAlunosExtras([])
+    setSugeridos([])
+    setNovoExtra('')
     setErros({})
+  }
+
+  // Envia a sugestão de cadastro de um aluno na hora (antes ou depois de a
+  // chamada existir). Não trava mais depois que a chamada é iniciada.
+  const enviarSugestao = async () => {
+    const nome = novoExtra.trim()
+    if (!nome || enviandoSugestao) return
+    setEnviandoSugestao(true)
+    try {
+      await poloApi.sugerirAluno(token, nome, historicoId ?? undefined)
+      setSugeridos((xs) => [...xs, nome])
+      setNovoExtra('')
+      toast.success('Sugestão enviada ao administrativo.')
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao enviar a sugestão.')
+    } finally {
+      setEnviandoSugestao(false)
+    }
   }
 
   // Escolher a aula reseta o formulário. Se a aula já tiver uma chamada em
@@ -109,7 +131,7 @@ export default function Chamada() {
       setProfessores(['', ''])
       setPresencas({})
       setRelatorio('')
-      setAlunosExtras([])
+      setSugeridos([])
       return
     }
 
@@ -120,7 +142,7 @@ export default function Chamada() {
       setDataAula(c.dataAula)
       setProfessores(c.professoresNomes.length ? c.professoresNomes : ['', ''])
       setRelatorio(c.relatorio ?? '')
-      setAlunosExtras([])
+      setSugeridos([])
       const marcados: Record<string, boolean> = {}
       for (const p of c.presencas) if (p.presente) marcados[p.alunoId] = true
       setPresencas(marcados)
@@ -198,7 +220,6 @@ export default function Chamada() {
           dataAula,
           relatorio: relatorio.trim() || undefined,
           presencas: lista,
-          alunosExtras: alunosExtras.length ? alunosExtras : undefined,
         }, [])
         setHistoricoId(r.historicoId)
         recarregar() // atualiza a lista de chamadas (a aula vira "pendente de fotos")
@@ -398,55 +419,38 @@ export default function Chamada() {
             )}
           </div>
 
-          {/* Alunos que não estão na lista (sugestão de cadastro) */}
+          {/* Alunos que não estão na lista (sugestão de cadastro) — disponível
+              a qualquer momento, inclusive depois de a chamada ser iniciada. */}
           <div className="card flex flex-col gap-3">
             <h2 className="font-bold">Aluno não está na lista?</h2>
             <p className="text-xs text-[var(--c-text-soft)]">
-              {camposTravados
-                ? 'A chamada já foi iniciada — não é mais possível sugerir alunos para este registro.'
-                : <>Escreva o nome e adicione. Isso <strong>não cria o cadastro</strong> —
-                  vai como sugestão para o administrativo aprovar.</>}
+              Escreva o nome e sugira. Isso <strong>não cria o cadastro</strong> —
+              vai como sugestão para o administrativo aprovar. Pode sugerir a qualquer momento.
             </p>
-            {!camposTravados && (
-              <div className="flex gap-2">
-                <input
-                  value={novoExtra}
-                  placeholder="Nome do aluno"
-                  className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-2"
-                  onChange={(e) => setNovoExtra(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && novoExtra.trim()) {
-                      setAlunosExtras((xs) => [...xs, novoExtra.trim()])
-                      setNovoExtra('')
-                    }
-                  }}
-                />
-                <button
-                  className="btn btn-ghost"
-                  disabled={!novoExtra.trim()}
-                  onClick={() => {
-                    setAlunosExtras((xs) => [...xs, novoExtra.trim()])
-                    setNovoExtra('')
-                  }}
-                >
-                  + Adicionar
-                </button>
-              </div>
-            )}
-            {alunosExtras.length > 0 && (
+            <div className="flex gap-2">
+              <input
+                value={novoExtra}
+                placeholder="Nome do aluno"
+                disabled={enviandoSugestao}
+                className="min-w-0 flex-1 rounded-lg border border-[var(--c-border)] px-3 py-2"
+                onChange={(e) => setNovoExtra(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); enviarSugestao() }
+                }}
+              />
+              <button
+                className="btn btn-ghost"
+                disabled={!novoExtra.trim() || enviandoSugestao}
+                onClick={enviarSugestao}
+              >
+                {enviandoSugestao ? 'Enviando…' : '+ Sugerir'}
+              </button>
+            </div>
+            {sugeridos.length > 0 && (
               <ul className="flex flex-wrap gap-2">
-                {alunosExtras.map((nome, i) => (
-                  <li key={i} className="badge badge--amber !text-sm">
-                    <span aria-hidden="true">◐</span> {nome}
-                    {!camposTravados && (
-                      <button
-                        className="ml-1 font-bold"
-                        onClick={() => setAlunosExtras((xs) => xs.filter((_, j) => j !== i))}
-                        aria-label={`Remover ${nome}`}
-                      >
-                        ✕
-                      </button>
-                    )}
+                {sugeridos.map((nome, i) => (
+                  <li key={i} className="badge badge--green !text-sm">
+                    <span aria-hidden="true">✓</span> {nome} · enviado
                   </li>
                 ))}
               </ul>

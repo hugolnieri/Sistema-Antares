@@ -41,6 +41,7 @@ const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/admin/cronograma', label: 'Cronograma', icon: 'cronograma' },
   { to: '/admin/materiais', label: 'Materiais', icon: 'materiais' },
   { to: '/admin/historico', label: 'Histórico', icon: 'historico' },
+  { to: '/admin/logs', label: 'Registros', icon: 'logs' },
 ]
 
 const TITULOS: Record<string, string> = {
@@ -52,6 +53,7 @@ const TITULOS: Record<string, string> = {
   '/admin/cronograma': 'Calendário / Cronograma',
   '/admin/materiais': 'Materiais didáticos',
   '/admin/historico': 'Histórico de aulas',
+  '/admin/logs': 'Registros de atividade',
 }
 
 interface Notif { id: string; icon: string; texto: string; to: string }
@@ -92,7 +94,7 @@ export function AdminShell() {
       // mesmo que a aula em si esteja mais distante (ex.: aula em 10 dias,
       // lembrete 8 dias antes -> lembrete daqui a 2 dias).
       supabase.from('cronograma')
-        .select('id, numero_aula, data, lembrete_dias_antes, lembrete_texto, polos(nome)')
+        .select('id, numero_aula, data, lembretes, polos(nome)')
         .gte('data', hoje).lte('data', em30).order('data'),
       supabase.from('solicitacoes_contato')
         .select('id, aluno_nome, polos(nome)')
@@ -121,12 +123,12 @@ export function AdminShell() {
             to: '/admin/cronograma',
           })
         }
-        if (c.lembrete_dias_antes != null) {
-          const dataLembrete = subtrairDias(c.data, c.lembrete_dias_antes)
+        for (const [i, lb] of ((c.lembretes ?? []) as any[]).entries()) {
+          const dataLembrete = subtrairDias(c.data, lb.dias_antes)
           if (dataLembrete >= hoje && dataLembrete <= em3) {
             lista.push({
-              id: `lb-${c.id}`, icon: '📄',
-              texto: `${fmtData(dataLembrete)}: ${c.lembrete_texto || 'Lembrete'}`,
+              id: `lb-${c.id}-${i}`, icon: '📄',
+              texto: `${fmtData(dataLembrete)}: ${lb.texto || 'Lembrete'}`,
               to: '/admin/cronograma',
             })
           }

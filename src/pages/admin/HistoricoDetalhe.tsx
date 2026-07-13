@@ -17,7 +17,7 @@ export default function HistoricoDetalhe() {
   useEffect(() => {
     if (!id) return
     supabase.from('historico_aulas')
-      .select('*, polos(nome), presencas(id, presente, alunos(nome)), fotos_aula(id, nome_arquivo, arquivo_path, url_externa)')
+      .select('*, polos(nome), presencas(id, presente, aluno_nome, alunos(nome)), fotos_aula(id, nome_arquivo, arquivo_path, url_externa)')
       .eq('id', id)
       .single()
       .then(async ({ data, error }) => {
@@ -117,7 +117,7 @@ export default function HistoricoDetalhe() {
               <tbody>
                 {presencas.map((p) => (
                   <tr key={p.id}>
-                    <td>{p.alunos?.nome ?? '—'}</td>
+                    <td>{p.alunos?.nome ?? p.aluno_nome ?? '—'}</td>
                     <td><StatusBadge status={p.presente ? 'presente' : 'ausente'} /></td>
                   </tr>
                 ))}

@@ -75,14 +75,14 @@ export default function Dashboard() {
       // Lembretes: data do lembrete = data da aula - dias de antecedência.
       // Mostra os que vencem dentro dos próximos 7 dias (incluindo atrasados).
       const proximosLembretes = proximasAulas
-        .filter((c) => c.lembrete_dias_antes != null)
-        .map((c): Lembrete => ({
-          id: c.id,
-          data: subtrairDias(c.data, c.lembrete_dias_antes!),
-          texto: c.lembrete_texto || 'Lembrete',
-          numeroAula: c.numero_aula,
-          poloNome: c.polos?.nome ?? '',
-        }))
+        .flatMap((c) =>
+          (c.lembretes ?? []).map((lb, i): Lembrete => ({
+            id: `${c.id}-${i}`,
+            data: subtrairDias(c.data, lb.dias_antes),
+            texto: lb.texto || 'Lembrete',
+            numeroAula: c.numero_aula,
+            poloNome: c.polos?.nome ?? '',
+          })))
         .filter((l) => l.data <= em7)
         .sort((a, b) => a.data.localeCompare(b.data))
       setLembretes(proximosLembretes)

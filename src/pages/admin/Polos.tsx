@@ -7,6 +7,7 @@ import { PoloMap } from '../../components/PoloMap'
 import { useToast } from '../../components/Toast'
 import { gerarSlug, linkDoPolo } from '../../lib/format'
 import { enderecoBuscavel, geocodificarEndereco } from '../../lib/geocode'
+import { registrarLog } from '../../lib/logs'
 import type { Polo } from '../../lib/types'
 
 const UFS = [
@@ -47,6 +48,8 @@ export default function Polos() {
 
   // Confirmação de inativação
   const [poloInativar, setPoloInativar] = useState<Polo | null>(null)
+  // Confirmação de exclusão definitiva
+  const [poloExcluir, setPoloExcluir] = useState<Polo | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -171,6 +174,10 @@ export default function Polos() {
       else toast.error('Erro ao salvar o polo.')
       return
     }
+    registrarLog({
+      acao: editando ? 'editar' : 'criar', entidade: 'polo', entidadeId: editando?.id,
+      descricao: `${editando ? 'Editou' : 'Criou'} o polo "${payload.nome}".`,
+    })
     toast.success(editando ? 'Polo atualizado.' : 'Polo criado. Agora defina a senha do polo.')
     setDrawerAberto(false)
     carregar()
@@ -188,6 +195,10 @@ export default function Polos() {
     })
     setSalvando(false)
     if (error) { toast.error('Erro ao definir a senha.'); return }
+    registrarLog({
+      acao: 'senha', entidade: 'polo', entidadeId: poloSenha.id,
+      descricao: `Alterou a senha do polo "${poloSenha.nome}".`,
+    })
     toast.success(`Senha do polo "${poloSenha.nome}" atualizada. Sessões antigas foram invalidadas.`)
     setPoloSenha(null)
     setNovaSenha('')
@@ -201,8 +212,28 @@ export default function Polos() {
       .from('polos').update({ status: novoStatus }).eq('id', poloInativar.id)
     setSalvando(false)
     if (error) { toast.error('Erro ao alterar o status.'); return }
+    registrarLog({
+      acao: 'status', entidade: 'polo', entidadeId: poloInativar.id,
+      descricao: `${novoStatus === 'inativo' ? 'Inativou' : 'Reativou'} o polo "${poloInativar.nome}".`,
+    })
     toast.success(novoStatus === 'inativo' ? 'Polo inativado.' : 'Polo reativado.')
     setPoloInativar(null)
+    carregar()
+  }
+
+  const excluir = async () => {
+    if (!poloExcluir) return
+    setSalvando(true)
+    const { error } = await supabase.from('polos').delete().eq('id', poloExcluir.id)
+    setSalvando(false)
+    if (error) { toast.error('Erro ao excluir o polo.'); return }
+    registrarLog({
+      acao: 'excluir', entidade: 'polo', entidadeId: poloExcluir.id,
+      descricao: `Excluiu o polo "${poloExcluir.nome}".`,
+    })
+    toast.success('Polo excluído.')
+    setPoloExcluir(null)
+    setDrawerAberto(false)
     carregar()
   }
 
@@ -347,6 +378,10 @@ export default function Polos() {
               <Link to={`/admin/historico?polo=${editando.id}`} className="btn btn-ghost !py-1.5 text-sm">
                 🕘 Ver histórico
               </Link>
+              <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
+                      onClick={() => setPoloExcluir(editando)}>
+                🗑️ Excluir polo
+              </button>
             </div>
           )}
           <div className="rounded-lg border border-[var(--c-border)] p-3">
@@ -505,6 +540,20 @@ export default function Polos() {
         loading={salvando}
         onConfirm={inativar}
         onClose={() => setPoloInativar(null)}
+      />
+
+      {/* Confirmação de exclusão definitiva */}
+      <ConfirmModal
+        open={!!poloExcluir}
+        title="Excluir polo"
+        message={<>Excluir definitivamente o polo <strong>{poloExcluir?.nome}</strong>?
+          O cronograma e o histórico de aulas deste polo serão apagados, e os alunos
+          ficarão sem polo. Esta ação não pode ser desfeita. Para apenas desativar o
+          acesso, use “Inativar”.</>}
+        confirmLabel="Excluir"
+        loading={salvando}
+        onConfirm={excluir}
+        onClose={() => setPoloExcluir(null)}
       />
     </>
   )

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Drawer, Field, ConfirmModal, StatusBadge } from '../../components/ui'
 import { useToast } from '../../components/Toast'
+import { registrarLog } from '../../lib/logs'
 import type { Polo, Professor } from '../../lib/types'
 
 const FORM_VAZIO = {
@@ -24,6 +25,7 @@ export default function Professores() {
   const [formErros, setFormErros] = useState<Record<string, string>>({})
   const [salvando, setSalvando] = useState(false)
   const [profInativar, setProfInativar] = useState<Professor | null>(null)
+  const [profExcluir, setProfExcluir] = useState<Professor | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -89,6 +91,10 @@ export default function Professores() {
       if (error) { setSalvando(false); toast.error('Professor salvo, mas houve erro ao vincular polos.'); carregar(); return }
     }
     setSalvando(false)
+    registrarLog({
+      acao: editando ? 'editar' : 'criar', entidade: 'professor', entidadeId: profId,
+      descricao: `${editando ? 'Editou' : 'Cadastrou'} o professor "${payload.nome}".`,
+    })
     toast.success(editando ? 'Professor atualizado.' : 'Professor cadastrado.')
     setDrawerAberto(false)
     carregar()
@@ -102,8 +108,28 @@ export default function Professores() {
       .from('professores').update({ status: novoStatus }).eq('id', profInativar.id)
     setSalvando(false)
     if (error) { toast.error('Erro ao alterar o status.'); return }
+    registrarLog({
+      acao: 'status', entidade: 'professor', entidadeId: profInativar.id,
+      descricao: `${novoStatus === 'inativo' ? 'Inativou' : 'Reativou'} o professor "${profInativar.nome}".`,
+    })
     toast.success(novoStatus === 'inativo' ? 'Professor inativado.' : 'Professor reativado.')
     setProfInativar(null)
+    carregar()
+  }
+
+  const excluir = async () => {
+    if (!profExcluir) return
+    setSalvando(true)
+    const { error } = await supabase.from('professores').delete().eq('id', profExcluir.id)
+    setSalvando(false)
+    if (error) { toast.error('Erro ao excluir o professor.'); return }
+    registrarLog({
+      acao: 'excluir', entidade: 'professor', entidadeId: profExcluir.id,
+      descricao: `Excluiu o professor "${profExcluir.nome}".`,
+    })
+    toast.success('Professor excluído.')
+    setProfExcluir(null)
+    setDrawerAberto(false)
     carregar()
   }
 
@@ -216,6 +242,14 @@ export default function Professores() {
         }
       >
         <div className="flex flex-col gap-4">
+          {editando && (
+            <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
+              <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
+                      onClick={() => setProfExcluir(editando)}>
+                🗑️ Excluir professor
+              </button>
+            </div>
+          )}
           <Field label="Nome" required error={formErros.nome}>
             <input value={form.nome} aria-invalid={!!formErros.nome}
                    onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
@@ -270,6 +304,18 @@ export default function Professores() {
         loading={salvando}
         onConfirm={alternarAtivo}
         onClose={() => setProfInativar(null)}
+      />
+
+      <ConfirmModal
+        open={!!profExcluir}
+        title="Excluir professor"
+        message={<>Excluir definitivamente o professor <strong>{profExcluir?.nome}</strong>?
+          Os vínculos com polos serão removidos. O nome permanece no histórico das aulas
+          já realizadas. Esta ação não pode ser desfeita.</>}
+        confirmLabel="Excluir"
+        loading={salvando}
+        onConfirm={excluir}
+        onClose={() => setProfExcluir(null)}
       />
     </>
   )

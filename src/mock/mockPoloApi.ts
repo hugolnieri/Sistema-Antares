@@ -25,6 +25,24 @@ const fotoParaUrl = (f: File) =>
 
 type MockDB = ReturnType<typeof loadDB>
 
+// Registro de auditoria de uma ação do professor (login, chamada, fotos, etc.).
+function registrarLogProfessor(
+  db: MockDB,
+  polo: MockDB['polos'][number],
+  entrada: { acao: string; entidade: string; entidadeId?: string | null; descricao: string },
+) {
+  db.logs.push({
+    id: uuid(),
+    ator: `Professor · ${polo.nome}`,
+    ator_tipo: 'professor',
+    acao: entrada.acao,
+    entidade: entrada.entidade,
+    entidade_id: entrada.entidadeId ?? null,
+    descricao: entrada.descricao,
+    created_at: new Date().toISOString(),
+  })
+}
+
 // O ciclo se encerra quando TODAS as 18 aulas do ciclo atual têm foto
 // (concluídas). Avança polo.ciclo_atual e retorna true se completou agora.
 function avancarCicloSeCompleto(db: MockDB, polo: MockDB['polos'][number]): boolean {
@@ -49,10 +67,16 @@ export const mockPoloApi = {
 
   async login(slug: string, senha: string): Promise<PoloSessao> {
     await sleep(350)
-    const polo = loadDB().polos.find((p) => p.slug === slug && p.status === 'ativo')
+    const db = loadDB()
+    const polo = db.polos.find((p) => p.slug === slug && p.status === 'ativo')
     if (!polo || !polo.senha || polo.senha !== senha) {
       throw new Error('Senha incorreta. Verifique com o administrativo.')
     }
+    registrarLogProfessor(db, polo, {
+      acao: 'login', entidade: 'sessao', entidadeId: polo.id,
+      descricao: `Professor acessou o polo "${polo.nome}".`,
+    })
+    saveDB(db)
     return {
       token: `${polo.id}.${polo.token_version}`,
       polo: { id: polo.id, nome: polo.nome },
@@ -129,7 +153,43 @@ export const mockPoloApi = {
         aluno_nome: nome, motivo: motivo || null, status: 'pendente', created_at: new Date().toISOString(),
       })
     }
+    registrarLogProfessor(db, polo, {
+      acao: 'contato', entidade: 'aluno', entidadeId: aluno?.id ?? null,
+      descricao: `Solicitou o contato do responsável de "${nome}".`,
+    })
     saveDB(db)
+    return { ok: true }
+  },
+
+  // Sugere o cadastro de um aluno fora da lista (antes ou depois da chamada
+  // existir). Vira pendência de aprovação no admin — não cria o aluno.
+  async sugerirAluno(
+    token: string, nome: string, historicoId?: string,
+  ): Promise<{ ok: boolean }> {
+    await sleep(200)
+    const db = loadDB()
+    const [poloId, tv] = token.split('.')
+    const polo = db.polos.find((p) => p.id === poloId)
+    if (!polo || polo.status !== 'ativo' || String(polo.token_version) !== tv) {
+      throw new Error('Sessão expirada. Digite a senha novamente.')
+    }
+    const nomeTrim = (nome ?? '').trim()
+    if (!nomeTrim) throw new Error('Informe o nome do aluno')
+    const jaExiste = db.alunos_sugeridos.some(
+      (s) => s.polo_id === polo.id && s.status === 'pendente' &&
+        s.nome.trim().toLowerCase() === nomeTrim.toLowerCase(),
+    )
+    if (!jaExiste) {
+      db.alunos_sugeridos.push({
+        id: uuid(), polo_id: polo.id, historico_id: historicoId ?? null,
+        nome: nomeTrim, status: 'pendente', created_at: new Date().toISOString(),
+      })
+      registrarLogProfessor(db, polo, {
+        acao: 'sugestao', entidade: 'aluno',
+        descricao: `Sugeriu o cadastro do aluno "${nomeTrim}".`,
+      })
+      saveDB(db)
+    }
     return { ok: true }
   },
 
@@ -178,7 +238,7 @@ export const mockPoloApi = {
 
     const existente = db.presencas.find((p) => p.historico_id === historicoId && p.aluno_id === alunoId)
     if (existente) existente.presente = presente
-    else db.presencas.push({ id: uuid(), historico_id: historicoId, aluno_id: alunoId, presente })
+    else db.presencas.push({ id: uuid(), historico_id: historicoId, aluno_id: alunoId, aluno_nome: aluno.nome, presente })
     saveDB(db)
     return { ok: true }
   },
@@ -220,18 +280,21 @@ export const mockPoloApi = {
       if (f.size > MAX_FOTO_BYTES) throw new Error(`"${f.name}" passa de 5 MB`)
     }
 
-    const idsValidos = new Set(db.alunos.filter((a) => a.polo_id === polo.id).map((a) => a.id))
+    const alunosPolo = db.alunos.filter((a) => a.polo_id === polo.id)
+    const nomePorId = new Map(alunosPolo.map((a) => [a.id, a.nome]))
+    const idsValidos = new Set(alunosPolo.map((a) => a.id))
     const presencas = dados.presencas.filter((p) => idsValidos.has(p.alunoId))
     if (!presencas.length) throw new Error('Alunos inválidos para este polo')
 
     const agora = new Date().toISOString()
+    const cicloDaAula = polo.ciclo_atual
     const dataHora = new Date(`${dados.dataAula}T12:00:00`).toISOString()
     const historicoId = uuid()
     db.historico_aulas.push({
       id: historicoId,
       polo_id: polo.id,
       numero_aula: dados.numeroAula,
-      ciclo: polo.ciclo_atual,
+      ciclo: cicloDaAula,
       professor_nome: professores.join(', '),
       professores_nomes: professores,
       data_hora: dataHora,
@@ -241,7 +304,8 @@ export const mockPoloApi = {
     })
     for (const p of presencas) {
       db.presencas.push({
-        id: uuid(), historico_id: historicoId, aluno_id: p.alunoId, presente: p.presente,
+        id: uuid(), historico_id: historicoId, aluno_id: p.alunoId,
+        aluno_nome: nomePorId.get(p.alunoId) ?? null, presente: p.presente,
       })
     }
     // Alunos fora da lista viram sugestão de cadastro (pendente)
@@ -262,6 +326,10 @@ export const mockPoloApi = {
         created_at: agora,
       })
     }
+    registrarLogProfessor(db, polo, {
+      acao: 'chamada', entidade: 'chamada', entidadeId: historicoId,
+      descricao: `Registrou a chamada da Aula ${dados.numeroAula} (Ciclo ${cicloDaAula}).`,
+    })
     // Se o professor já enviou fotos junto, isso pode ter fechado o ciclo
     // (todas as 18 concluídas). Sem fotos, a aula fica pendente.
     const cicloConcluido = avancarCicloSeCompleto(db, polo)
@@ -297,6 +365,10 @@ export const mockPoloApi = {
         url_externa: await fotoParaUrl(f), created_at: agora,
       })
     }
+    registrarLogProfessor(db, polo, {
+      acao: 'fotos', entidade: 'chamada', entidadeId: historicoId,
+      descricao: `Enviou ${fotos.length} foto${fotos.length === 1 ? '' : 's'} da Aula ${hist.numero_aula} (Ciclo ${hist.ciclo}).`,
+    })
     // Anexar fotos pode ter concluído a última aula pendente do ciclo.
     const cicloConcluido = avancarCicloSeCompleto(db, polo)
     saveDB(db)

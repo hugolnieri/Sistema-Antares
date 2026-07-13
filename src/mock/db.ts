@@ -16,6 +16,7 @@ export interface MockDB {
   fotos_aula: any[]
   alunos_sugeridos: any[]
   solicitacoes_contato: any[]
+  logs: any[]
 }
 
 const KEY = 'antares-mock-db'
@@ -104,12 +105,12 @@ function seed(): MockDB {
       { id: uuid(), numero_aula: 6, titulo: 'Aula em revisão (oculta)', descricao: 'Material sendo atualizado.', arquivo_path: 'aula-06.pdf', relatorio: null, status: 'inativo', created_at: diasAtras(65) },
     ],
     cronograma: [
-      { id: uuid(), polo_id: p1, numero_aula: 3, data: dataEm(-7), professor_id: pr1, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: dataEm(1), created_at: diasAtras(20) },
-      { id: uuid(), polo_id: p2, numero_aula: 1, data: dataEm(-5), professor_id: pr2, observacoes: null, status: 'concluida', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: null, created_at: diasAtras(20) },
-      { id: uuid(), polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Organizar materiais', relatorio_lembrete_data: null, created_at: diasAtras(10) },
-      { id: uuid(), polo_id: p3, numero_aula: 1, data: dataEm(3), professor_id: null, observacoes: 'Professor a definir.', status: 'agendada', lembrete_dias_antes: 2, lembrete_texto: 'Imprimir listas de presença', relatorio_lembrete_data: null, created_at: diasAtras(8) },
-      { id: uuid(), polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: null, created_at: diasAtras(5) },
-      { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', lembrete_dias_antes: null, lembrete_texto: null, relatorio_lembrete_data: null, created_at: diasAtras(3) },
+      { id: uuid(), polo_id: p1, numero_aula: 3, data: dataEm(-7), professor_id: pr1, observacoes: null, status: 'concluida', lembretes: [], relatorio_lembrete_data: dataEm(1), created_at: diasAtras(20) },
+      { id: uuid(), polo_id: p2, numero_aula: 1, data: dataEm(-5), professor_id: pr2, observacoes: null, status: 'concluida', lembretes: [], relatorio_lembrete_data: null, created_at: diasAtras(20) },
+      { id: uuid(), polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', lembretes: [{ dias_antes: 2, texto: 'Organizar materiais' }, { dias_antes: 7, texto: 'Confirmar presença com as famílias' }], relatorio_lembrete_data: null, created_at: diasAtras(10) },
+      { id: uuid(), polo_id: p3, numero_aula: 1, data: dataEm(3), professor_id: null, observacoes: 'Professor a definir.', status: 'agendada', lembretes: [{ dias_antes: 2, texto: 'Imprimir listas de presença' }], relatorio_lembrete_data: null, created_at: diasAtras(8) },
+      { id: uuid(), polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', lembretes: [], relatorio_lembrete_data: null, created_at: diasAtras(5) },
+      { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', lembretes: [], relatorio_lembrete_data: null, created_at: diasAtras(3) },
     ],
     historico_aulas: [
       { id: h1, polo_id: p1, numero_aula: 3, ciclo: 1, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
@@ -117,18 +118,18 @@ function seed(): MockDB {
       { id: h3, polo_id: p1, numero_aula: 2, ciclo: 1, professor_nome: 'Ana Lima', professores_nomes: ['Ana Lima'], data_hora: diasAtras(20), relatorio: null, criado_por: 'professor', created_at: diasAtras(20) },
     ],
     presencas: [
-      { id: uuid(), historico_id: h1, aluno_id: al[0], presente: true },
-      { id: uuid(), historico_id: h1, aluno_id: al[1], presente: true },
-      { id: uuid(), historico_id: h1, aluno_id: al[2], presente: false },
-      { id: uuid(), historico_id: h1, aluno_id: al[3], presente: true },
-      { id: uuid(), historico_id: h2, aluno_id: al[5], presente: true },
-      { id: uuid(), historico_id: h2, aluno_id: al[6], presente: true },
-      { id: uuid(), historico_id: h2, aluno_id: al[7], presente: false },
-      { id: uuid(), historico_id: h2, aluno_id: al[8], presente: true },
-      { id: uuid(), historico_id: h3, aluno_id: al[0], presente: true },
-      { id: uuid(), historico_id: h3, aluno_id: al[1], presente: false },
-      { id: uuid(), historico_id: h3, aluno_id: al[2], presente: true },
-      { id: uuid(), historico_id: h3, aluno_id: al[3], presente: true },
+      { id: uuid(), historico_id: h1, aluno_id: al[0], aluno_nome: 'Alice Ferreira', presente: true },
+      { id: uuid(), historico_id: h1, aluno_id: al[1], aluno_nome: 'Bernardo Souza', presente: true },
+      { id: uuid(), historico_id: h1, aluno_id: al[2], aluno_nome: 'Cecília Ramos', presente: false },
+      { id: uuid(), historico_id: h1, aluno_id: al[3], aluno_nome: 'Davi Oliveira', presente: true },
+      { id: uuid(), historico_id: h2, aluno_id: al[5], aluno_nome: 'Felipe Martins', presente: true },
+      { id: uuid(), historico_id: h2, aluno_id: al[6], aluno_nome: 'Gabriela Costa', presente: true },
+      { id: uuid(), historico_id: h2, aluno_id: al[7], aluno_nome: 'Heitor Almeida', presente: false },
+      { id: uuid(), historico_id: h2, aluno_id: al[8], aluno_nome: 'Isabela Cardoso', presente: true },
+      { id: uuid(), historico_id: h3, aluno_id: al[0], aluno_nome: 'Alice Ferreira', presente: true },
+      { id: uuid(), historico_id: h3, aluno_id: al[1], aluno_nome: 'Bernardo Souza', presente: false },
+      { id: uuid(), historico_id: h3, aluno_id: al[2], aluno_nome: 'Cecília Ramos', presente: true },
+      { id: uuid(), historico_id: h3, aluno_id: al[3], aluno_nome: 'Davi Oliveira', presente: true },
     ],
     fotos_aula: [
       { id: uuid(), historico_id: h1, polo_id: p1, nome_arquivo: 'atividade-grupo.jpg', arquivo_path: null, url_externa: foto('Atividade em grupo', '#4c6ef5'), created_at: diasAtras(2) },
@@ -139,6 +140,11 @@ function seed(): MockDB {
     ],
     solicitacoes_contato: [
       { id: uuid(), polo_id: p2, aluno_id: al[5], aluno_nome: 'Felipe Martins', motivo: 'Faltou às duas últimas aulas, preciso avisar a família.', status: 'pendente', created_at: diasAtras(1) },
+    ],
+    logs: [
+      { id: uuid(), ator: 'admin@antares.com', ator_tipo: 'admin', acao: 'criar', entidade: 'polo', entidade_id: p1, descricao: 'Criou o polo "Jardim Santa Maria".', created_at: diasAtras(90) },
+      { id: uuid(), ator: 'Professor · Jardim Santa Maria', ator_tipo: 'professor', acao: 'login', entidade: 'sessao', entidade_id: p1, descricao: 'Professor acessou o polo "Jardim Santa Maria".', created_at: diasAtras(2) },
+      { id: uuid(), ator: 'Professor · Jardim Santa Maria', ator_tipo: 'professor', acao: 'chamada', entidade: 'chamada', entidade_id: h1, descricao: 'Registrou a chamada da Aula 3 (Ciclo 1).', created_at: diasAtras(2) },
     ],
   }
 }
@@ -151,12 +157,25 @@ export function loadDB(): MockDB {
       // Migração: dados salvos antes de novas tabelas/colunas existirem
       if (!db.alunos_sugeridos) db.alunos_sugeridos = []
       if (!db.solicitacoes_contato) db.solicitacoes_contato = []
+      if (!db.logs) db.logs = []
       for (const s of db.solicitacoes_contato) if (s.motivo === undefined) s.motivo = null
       delete (db as any).eventos
       for (const c of db.cronograma) {
-        if (c.lembrete_dias_antes === undefined) c.lembrete_dias_antes = null
-        if (c.lembrete_texto === undefined) c.lembrete_texto = null
         if (c.relatorio_lembrete_data === undefined) c.relatorio_lembrete_data = null
+        // Lembrete único (lembrete_dias_antes/texto) -> lista de lembretes.
+        if (!Array.isArray(c.lembretes)) {
+          c.lembretes = c.lembrete_dias_antes != null
+            ? [{ dias_antes: c.lembrete_dias_antes, texto: c.lembrete_texto ?? '' }]
+            : []
+        }
+        delete c.lembrete_dias_antes
+        delete c.lembrete_texto
+      }
+      // Snapshot do nome do aluno nas presenças (sobrevive à exclusão do aluno).
+      for (const p of db.presencas) {
+        if (p.aluno_nome === undefined) {
+          p.aluno_nome = db.alunos.find((a) => a.id === p.aluno_id)?.nome ?? null
+        }
       }
       for (const m of db.materiais) if (m.relatorio === undefined) m.relatorio = null
       for (const p of db.polos) if (p.ciclo_atual === undefined) p.ciclo_atual = 1

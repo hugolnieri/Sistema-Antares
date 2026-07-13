@@ -92,6 +92,13 @@ export interface Material {
   created_at: string
 }
 
+// Um lembrete de uma aula agendada: aparece sozinho no calendário X dias antes.
+// Uma aula pode ter vários (botão "+" no cronograma).
+export interface LembreteCronograma {
+  dias_antes: number
+  texto: string
+}
+
 export interface CronogramaItem {
   id: string
   polo_id: string
@@ -100,12 +107,26 @@ export interface CronogramaItem {
   professor_id: string | null
   observacoes: string | null
   status: 'agendada' | 'concluida' | 'cancelada'
-  lembrete_dias_antes: number | null
-  lembrete_texto: string | null
+  lembretes: LembreteCronograma[]
+  // Campos antigos (1 lembrete só) — mantidos para migração/leitura de dados legados.
+  lembrete_dias_antes?: number | null
+  lembrete_texto?: string | null
   relatorio_lembrete_data: string | null
   created_at: string
   polos?: { nome: string } | null
   professores?: { nome: string } | null
+}
+
+// Registro de auditoria: o que cada usuário fez no sistema.
+export interface LogEntry {
+  id: string
+  created_at: string
+  ator: string            // e-mail do admin, "Professor · <polo>" ou "Sistema"
+  ator_tipo: 'admin' | 'professor' | 'sistema'
+  acao: string            // 'criar' | 'editar' | 'excluir' | 'login' | 'chamada' | ...
+  entidade: string        // 'polo' | 'professor' | 'aluno' | 'responsavel' | ...
+  entidade_id: string | null
+  descricao: string
 }
 
 export interface HistoricoAula {
@@ -127,7 +148,8 @@ export interface HistoricoAula {
 export interface Presenca {
   id: string
   historico_id: string
-  aluno_id: string
+  aluno_id: string | null       // vira null se o aluno for excluído (o histórico é preservado)
+  aluno_nome?: string | null    // nome gravado na hora da chamada (sobrevive à exclusão do aluno)
   presente: boolean
   alunos?: { nome: string } | null
 }

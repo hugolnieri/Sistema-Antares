@@ -66,7 +66,10 @@ function embed(db: MockDB, table: string, row: any, sel: string): any {
         .filter((p) => p.historico_id === row.id)
         .map((p) => ({
           ...p,
-          ...(sel.includes('alunos(') ? { alunos: nomeDe(db.alunos, p.aluno_id) } : {}),
+          // Nome vem do aluno atual; se o aluno foi excluído, usa o snapshot.
+          ...(sel.includes('alunos(')
+            ? { alunos: nomeDe(db.alunos, p.aluno_id) ?? (p.aluno_nome ? { nome: p.aluno_nome } : null) }
+            : {}),
         }))
     }
     if (sel.includes('fotos_aula')) {
@@ -94,6 +97,47 @@ function embed(db: MockDB, table: string, row: any, sel: string): any {
   }
 
   return r
+}
+
+/* ---------------- Exclusão em cascata ---------------- */
+
+// Reproduz o comportamento das foreign keys do schema ao excluir um registro.
+// Regra especial: excluir um ALUNO preserva as presenças (histórico) — só
+// desvincula o aluno_id; o aluno_nome já gravado mantém o nome no histórico.
+function cascadeDelete(db: MockDB, table: keyof MockDB, excluidos: any[]) {
+  const ids = new Set(excluidos.map((r) => r.id))
+  if (!ids.size) return
+
+  if (table === 'polos') {
+    db.professor_polos = db.professor_polos.filter((pp) => !ids.has(pp.polo_id))
+    for (const a of db.alunos) if (ids.has(a.polo_id)) a.polo_id = null // on delete set null
+    db.cronograma = db.cronograma.filter((c) => !ids.has(c.polo_id))
+    const histIds = new Set(
+      db.historico_aulas.filter((h) => ids.has(h.polo_id)).map((h) => h.id),
+    )
+    db.historico_aulas = db.historico_aulas.filter((h) => !ids.has(h.polo_id))
+    db.presencas = db.presencas.filter((p) => !histIds.has(p.historico_id))
+    db.fotos_aula = db.fotos_aula.filter((f) => !ids.has(f.polo_id))
+    db.alunos_sugeridos = db.alunos_sugeridos.filter((s) => !ids.has(s.polo_id))
+    db.solicitacoes_contato = db.solicitacoes_contato.filter((s) => !ids.has(s.polo_id))
+  }
+
+  if (table === 'professores') {
+    db.professor_polos = db.professor_polos.filter((pp) => !ids.has(pp.professor_id))
+    for (const c of db.cronograma) if (ids.has(c.professor_id)) c.professor_id = null
+    // historico_aulas guarda o nome do professor como texto -> preservado.
+  }
+
+  if (table === 'alunos') {
+    db.aluno_responsaveis = db.aluno_responsaveis.filter((ar) => !ids.has(ar.aluno_id))
+    // Presenças PRESERVADAS: mantém o registro do que o aluno frequentou.
+    for (const p of db.presencas) if (ids.has(p.aluno_id)) p.aluno_id = null
+    for (const s of db.solicitacoes_contato) if (ids.has(s.aluno_id)) s.aluno_id = null
+  }
+
+  if (table === 'responsaveis') {
+    db.aluno_responsaveis = db.aluno_responsaveis.filter((ar) => !ids.has(ar.responsavel_id))
+  }
 }
 
 /* ---------------- Query builder ---------------- */
@@ -180,9 +224,10 @@ class MockQuery implements PromiseLike<any> {
     }
 
     if (this.modo === 'delete') {
-      const restantes = tabela.filter((r) =>
-        !this.filtros.every((f) => r[f.col] === f.val))
-      ;(db[this.table] as any[]) = restantes
+      const excluidos = this.aplica(tabela)
+      const remover = new Set(excluidos)
+      ;(db[this.table] as any[]) = tabela.filter((r) => !remover.has(r))
+      cascadeDelete(db, this.table, excluidos)
       saveDB(db)
       return { data: null, error: null }
     }

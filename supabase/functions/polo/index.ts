@@ -10,6 +10,7 @@
 //   obterChamada        { token, historicoId }                    -> retoma chamada pendente
 //   atualizarPresenca   { token, historicoId, alunoId, presente } -> auto-save por aluno
 //   solicitarContato    { token, alunoId, alunoNome, motivo }     -> pedido de contato p/ o admin
+//   sugerirAluno        { token, nome, historicoId? }             -> sugere cadastro de aluno
 //
 // Secrets necessários: POLO_TOKEN_SECRET (defina com `supabase secrets set`).
 // SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são injetados automaticamente.
@@ -91,6 +92,23 @@ async function requirePolo(token: string | null) {
   return polo;
 }
 
+// Registro de auditoria de uma ação do professor. Nunca deve quebrar o fluxo.
+async function registrarLog(
+  polo: { id: string; nome: string },
+  entrada: { acao: string; entidade: string; entidadeId?: string | null; descricao: string },
+) {
+  try {
+    await supabase.from("logs").insert({
+      ator: `Professor · ${polo.nome}`,
+      ator_tipo: "professor",
+      acao: entrada.acao,
+      entidade: entrada.entidade,
+      entidade_id: entrada.entidadeId ?? null,
+      descricao: entrada.descricao,
+    });
+  } catch (_e) { /* logs não podem interromper a ação principal */ }
+}
+
 // --- ações -----------------------------------------------------------------
 
 async function acaoInfo(slug: string) {
@@ -111,7 +129,34 @@ async function acaoLogin(slug: string, senha: string) {
   const token = await signToken({
     poloId: polo.polo_id, tv: polo.token_version, exp: Date.now() + TOKEN_TTL_MS,
   });
+  await registrarLog({ id: polo.polo_id, nome: polo.nome }, {
+    acao: "login", entidade: "sessao", entidadeId: polo.polo_id,
+    descricao: `Professor acessou o polo "${polo.nome}".`,
+  });
   return json({ token, polo: { id: polo.polo_id, nome: polo.nome } });
+}
+
+// Professor sugere o cadastro de um aluno fora da lista (antes ou depois da
+// chamada existir). Vira pendência de aprovação no admin — não cria o aluno.
+async function acaoSugerirAluno(token: string, nome?: string, historicoId?: string) {
+  const polo = await requirePolo(token);
+  if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
+  const nomeTrim = (nome ?? "").trim();
+  if (!nomeTrim) return json({ error: "Informe o nome do aluno" }, 400);
+
+  const { data: existentes } = await supabase
+    .from("alunos_sugeridos").select("id")
+    .eq("polo_id", polo.id).eq("status", "pendente").ilike("nome", nomeTrim).limit(1);
+  if (!existentes?.length) {
+    await supabase.from("alunos_sugeridos").insert({
+      polo_id: polo.id, historico_id: historicoId ?? null, nome: nomeTrim, status: "pendente",
+    });
+    await registrarLog(polo, {
+      acao: "sugestao", entidade: "aluno",
+      descricao: `Sugeriu o cadastro do aluno "${nomeTrim}".`,
+    });
+  }
+  return json({ ok: true });
 }
 
 // Professor solicita os dados do responsável de um aluno — vira pendência no admin.
@@ -148,6 +193,10 @@ async function acaoSolicitarContato(
       motivo: motivoTexto, status: "pendente",
     });
   }
+  await registrarLog(polo, {
+    acao: "contato", entidade: "aluno", entidadeId: idValido,
+    descricao: `Solicitou o contato do responsável de "${nome}".`,
+  });
   return json({ ok: true });
 }
 
@@ -244,13 +293,13 @@ async function acaoAtualizarPresenca(
     return json({ error: "Registro de aula não encontrado" }, 404);
   }
   const { data: aluno } = await supabase
-    .from("alunos").select("id").eq("id", alunoId).eq("polo_id", polo.id).single();
+    .from("alunos").select("id, nome").eq("id", alunoId).eq("polo_id", polo.id).single();
   if (!aluno) return json({ error: "Aluno inválido" }, 400);
 
   const { error } = await supabase
     .from("presencas")
     .upsert(
-      { historico_id: historicoId, aluno_id: alunoId, presente },
+      { historico_id: historicoId, aluno_id: alunoId, aluno_nome: aluno.nome, presente },
       { onConflict: "historico_id,aluno_id" },
     );
   if (error) return json({ error: "Erro ao salvar a presença" }, 500);
@@ -314,7 +363,7 @@ async function acaoFotosExtra(form: FormData) {
 
   const historicoId = String(form.get("historicoId") ?? "");
   const { data: hist } = await supabase
-    .from("historico_aulas").select("id, polo_id").eq("id", historicoId).single();
+    .from("historico_aulas").select("id, polo_id, numero_aula, ciclo").eq("id", historicoId).single();
   if (!hist || hist.polo_id !== polo.id) {
     return json({ error: "Registro de aula não encontrado" }, 404);
   }
@@ -328,6 +377,10 @@ async function acaoFotosExtra(form: FormData) {
   if (invalida) return invalida;
 
   const fotosErro = await uploadFotos(polo.id, hist.id, fotos);
+  await registrarLog(polo, {
+    acao: "fotos", entidade: "chamada", entidadeId: hist.id,
+    descricao: `Enviou ${fotos.length} foto${fotos.length === 1 ? "" : "s"} da Aula ${hist.numero_aula} (Ciclo ${hist.ciclo}).`,
+  });
   // Anexar fotos pode ter concluído a última aula pendente do ciclo.
   const cicloConcluido = await avancarCicloSeCompleto(polo.id, polo.ciclo_atual);
   return json({ historicoId: hist.id, fotosErro, cicloConcluido });
@@ -379,7 +432,8 @@ async function acaoChamada(form: FormData) {
 
   // Presenças só de alunos que realmente pertencem a este polo
   const { data: alunosPolo } = await supabase
-    .from("alunos").select("id").eq("polo_id", polo.id);
+    .from("alunos").select("id, nome").eq("polo_id", polo.id);
+  const nomePorId = new Map((alunosPolo ?? []).map((a) => [a.id, a.nome]));
   const idsValidos = new Set((alunosPolo ?? []).map((a) => a.id));
   const presencas = dados.presencas.filter((p) => idsValidos.has(p.alunoId));
   if (!presencas.length) return json({ error: "Alunos inválidos para este polo" }, 400);
@@ -407,7 +461,8 @@ async function acaoChamada(form: FormData) {
 
   const { error: presErr } = await supabase.from("presencas").insert(
     presencas.map((p) => ({
-      historico_id: hist.id, aluno_id: p.alunoId, presente: p.presente,
+      historico_id: hist.id, aluno_id: p.alunoId,
+      aluno_nome: nomePorId.get(p.alunoId) ?? null, presente: p.presente,
     })),
   );
   if (presErr) {
@@ -426,6 +481,11 @@ async function acaoChamada(form: FormData) {
       })),
     );
   }
+
+  await registrarLog(polo, {
+    acao: "chamada", entidade: "chamada", entidadeId: hist.id,
+    descricao: `Registrou a chamada da Aula ${dados.numeroAula} (Ciclo ${polo.ciclo_atual}).`,
+  });
 
   const fotosErro = await uploadFotos(polo.id, hist.id, fotos);
   // Se o professor já enviou fotos junto com a chamada, isso pode ter fechado
@@ -456,6 +516,8 @@ Deno.serve(async (req) => {
       case "dados": return await acaoDados(body.token);
       case "solicitarContato":
         return await acaoSolicitarContato(body.token, body.alunoId, body.alunoNome, body.motivo);
+      case "sugerirAluno":
+        return await acaoSugerirAluno(body.token, body.nome, body.historicoId);
       case "obterChamada":
         return await acaoObterChamada(body.token, body.historicoId);
       case "atualizarPresenca":

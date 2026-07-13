@@ -6,6 +6,7 @@ import { Drawer, Field, Modal, ConfirmModal, StatusBadge, EmptyState } from '../
 import { useToast } from '../../components/Toast'
 import { fmtData, fmtDataHora } from '../../lib/format'
 import { baixarModeloAlunos, lerPlanilhaAlunos, type LinhaPlanilhaAlunos } from '../../lib/planilhaAlunos'
+import { registrarLog } from '../../lib/logs'
 import type { Aluno, AlunoSugerido, Polo, Responsavel } from '../../lib/types'
 
 const FORM_VAZIO = {
@@ -43,6 +44,9 @@ export default function Alunos() {
   const [formErros, setFormErros] = useState<Record<string, string>>({})
   const [salvando, setSalvando] = useState(false)
   const [alunoInativar, setAlunoInativar] = useState<Aluno | null>(null)
+  // Exclusão definitiva (com opção de excluir também os responsáveis do aluno)
+  const [alunoExcluir, setAlunoExcluir] = useState<Aluno | null>(null)
+  const [excluirResp, setExcluirResp] = useState(false)
 
   // Histórico de presença do aluno
   const [alunoHistorico, setAlunoHistorico] = useState<Aluno | null>(null)
@@ -141,6 +145,10 @@ export default function Alunos() {
       }
     }
     setSalvando(false)
+    registrarLog({
+      acao: editando ? 'editar' : 'criar', entidade: 'aluno', entidadeId: alunoId,
+      descricao: `${editando ? 'Editou' : 'Cadastrou'} o aluno "${payload.nome}".`,
+    })
     toast.success(editando ? 'Aluno atualizado.' : 'Aluno cadastrado.')
     setDrawerAberto(false)
     carregar()
@@ -154,8 +162,45 @@ export default function Alunos() {
       .from('alunos').update({ status: novoStatus }).eq('id', alunoInativar.id)
     setSalvando(false)
     if (error) { toast.error('Erro ao alterar o status.'); return }
+    registrarLog({
+      acao: 'status', entidade: 'aluno', entidadeId: alunoInativar.id,
+      descricao: `${novoStatus === 'inativo' ? 'Inativou' : 'Reativou'} o aluno "${alunoInativar.nome}".`,
+    })
     toast.success(novoStatus === 'inativo' ? 'Aluno inativado.' : 'Aluno reativado.')
     setAlunoInativar(null)
+    carregar()
+  }
+
+  // Exclusão definitiva. As presenças são preservadas (o histórico mantém o
+  // nome do aluno). Opcionalmente exclui também os responsáveis exclusivos.
+  const excluir = async () => {
+    if (!alunoExcluir) return
+    setSalvando(true)
+    let respExcluidos = 0
+    if (excluirResp) {
+      const respIds = (alunoExcluir.aluno_responsaveis ?? []).map((ar) => ar.responsavel_id)
+      for (const rid of respIds) {
+        const { data: outros } = await supabase
+          .from('aluno_responsaveis').select('aluno_id').eq('responsavel_id', rid)
+        // Só exclui o responsável se ele não estiver vinculado a outro aluno.
+        const soDesteAluno = (outros ?? []).every((o: any) => o.aluno_id === alunoExcluir.id)
+        if (soDesteAluno) {
+          const { error } = await supabase.from('responsaveis').delete().eq('id', rid)
+          if (!error) respExcluidos++
+        }
+      }
+    }
+    const { error } = await supabase.from('alunos').delete().eq('id', alunoExcluir.id)
+    setSalvando(false)
+    if (error) { toast.error('Erro ao excluir o aluno.'); return }
+    registrarLog({
+      acao: 'excluir', entidade: 'aluno', entidadeId: alunoExcluir.id,
+      descricao: `Excluiu o aluno "${alunoExcluir.nome}"` +
+        (respExcluidos ? ` e ${respExcluidos} responsável(is) vinculado(s).` : '.'),
+    })
+    toast.success('Aluno excluído. O histórico de presenças foi preservado.')
+    setAlunoExcluir(null)
+    setDrawerAberto(false)
     carregar()
   }
 
@@ -171,6 +216,10 @@ export default function Alunos() {
     if (error) { setSalvando(false); toast.error('Erro ao aprovar o cadastro.'); return }
     await supabase.from('alunos_sugeridos').update({ status: 'aprovado' }).eq('id', s.id)
     setSalvando(false)
+    registrarLog({
+      acao: 'criar', entidade: 'aluno', entidadeId: s.id,
+      descricao: `Aprovou a sugestão e cadastrou o aluno "${s.nome}" no polo ${s.polos?.nome ?? ''}.`,
+    })
     toast.success(`Aluno "${s.nome}" cadastrado no polo ${s.polos?.nome ?? ''}.`)
     carregar()
   }
@@ -181,6 +230,10 @@ export default function Alunos() {
       .from('alunos_sugeridos').update({ status: 'recusado' }).eq('id', s.id)
     setSalvando(false)
     if (error) { toast.error('Erro ao recusar a sugestão.'); return }
+    registrarLog({
+      acao: 'recusar', entidade: 'aluno', entidadeId: s.id,
+      descricao: `Recusou a sugestão de cadastro do aluno "${s.nome}".`,
+    })
     toast.success('Sugestão recusada.')
     carregar()
   }
@@ -290,6 +343,10 @@ export default function Alunos() {
     setImportAberto(false)
     setImportLinhas([])
     const n = criadosAlunos.length
+    registrarLog({
+      acao: 'importar', entidade: 'aluno',
+      descricao: `Importou ${n} aluno${n === 1 ? '' : 's'} por planilha.`,
+    })
     toast.success(`${n} aluno${n === 1 ? '' : 's'} importado${n === 1 ? '' : 's'} com sucesso.`)
     carregar()
   }
@@ -425,6 +482,10 @@ export default function Alunos() {
               <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => abrirHistorico(editando)}>
                 🕘 Ver presenças
               </button>
+              <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
+                      onClick={() => { setExcluirResp(false); setAlunoExcluir(editando) }}>
+                🗑️ Excluir aluno
+              </button>
             </div>
           )}
           <Field label="Polo" required error={formErros.polo_id}>
@@ -538,6 +599,43 @@ export default function Alunos() {
         onConfirm={alternarStatus}
         onClose={() => setAlunoInativar(null)}
       />
+
+      {/* Exclusão definitiva do aluno (com opção de excluir os responsáveis) */}
+      <Modal
+        open={!!alunoExcluir}
+        title="Excluir aluno"
+        onClose={() => setAlunoExcluir(null)}
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setAlunoExcluir(null)} disabled={salvando}>
+              Cancelar
+            </button>
+            <button className="btn btn-danger" onClick={excluir} disabled={salvando}>
+              {salvando ? 'Aguarde…' : 'Excluir'}
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-[var(--c-text-soft)]">
+            Excluir definitivamente o aluno <strong>{alunoExcluir?.nome}</strong>? O{' '}
+            <strong>histórico de presenças é preservado</strong> — o nome continua no
+            registro das aulas já realizadas. Esta ação não pode ser desfeita.
+          </p>
+          {(alunoExcluir?.aluno_responsaveis?.length ?? 0) > 0 && (
+            <label className="flex items-start gap-2 rounded-lg border border-[var(--c-border)] p-3 text-sm">
+              <input type="checkbox" className="mt-0.5 !w-auto" checked={excluirResp}
+                     onChange={(e) => setExcluirResp(e.target.checked)} />
+              <span>
+                Excluir também os responsáveis deste aluno
+                {' '}({(alunoExcluir?.aluno_responsaveis ?? [])
+                  .map((ar) => ar.responsaveis?.nome).filter(Boolean).join(', ') || 'sem nome'}).
+                {' '}Só serão removidos os que não estiverem vinculados a outro aluno.
+              </span>
+            </label>
+          )}
+        </div>
+      </Modal>
 
       {/* Modal de revisão da planilha importada */}
       <Modal

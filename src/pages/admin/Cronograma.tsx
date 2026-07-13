@@ -7,12 +7,13 @@ import { Drawer, Field, ConfirmModal, Modal, StatusBadge } from '../../component
 import { useToast } from '../../components/Toast'
 import { fmtData, subtrairDias, adicionarDias, hojeISO, proximaSegunda, linkWhatsAppTexto } from '../../lib/format'
 import { statusDe } from '../../lib/status'
-import type { CronogramaItem, HistoricoAula, Material, Polo, Professor } from '../../lib/types'
+import { registrarLog } from '../../lib/logs'
+import type { CronogramaItem, HistoricoAula, LembreteCronograma, Material, Polo, Professor } from '../../lib/types'
 
 const AULA_VAZIA = {
   polo_id: '', numero_aula: 1, data: '', professor_id: '', observacoes: '',
   status: 'agendada' as CronogramaItem['status'],
-  lembrete_dias_antes: '', lembrete_texto: '',
+  lembretes: [] as LembreteCronograma[],
   relatorio_lembrete: false, relatorio_lembrete_data: '',
 }
 
@@ -88,16 +89,32 @@ export default function Cronograma() {
   }
   const abrirEdicaoAula = (c: CronogramaItem) => {
     setEditandoAula(c)
+    // Compatível com dados antigos (1 lembrete só) e novos (lista de lembretes).
+    const lembretes: LembreteCronograma[] = Array.isArray(c.lembretes) && c.lembretes.length
+      ? c.lembretes.map((l) => ({ dias_antes: l.dias_antes, texto: l.texto }))
+      : c.lembrete_dias_antes != null
+        ? [{ dias_antes: c.lembrete_dias_antes, texto: c.lembrete_texto ?? '' }]
+        : []
     setAula({
       polo_id: c.polo_id, numero_aula: c.numero_aula, data: c.data,
       professor_id: c.professor_id ?? '', observacoes: c.observacoes ?? '', status: c.status,
-      lembrete_dias_antes: c.lembrete_dias_antes != null ? String(c.lembrete_dias_antes) : '',
-      lembrete_texto: c.lembrete_texto ?? '',
+      lembretes,
       relatorio_lembrete: !!c.relatorio_lembrete_data,
       relatorio_lembrete_data: c.relatorio_lembrete_data ?? '',
     })
     setAulaErros({}); setAulaDrawer(true)
   }
+
+  // Manipulação da lista de lembretes do formulário (botão "+", edição e remoção).
+  const adicionarLembrete = () =>
+    setAula((f) => ({ ...f, lembretes: [...f.lembretes, { dias_antes: 2, texto: '' }] }))
+  const mudarLembrete = (i: number, patch: Partial<LembreteCronograma>) =>
+    setAula((f) => ({
+      ...f,
+      lembretes: f.lembretes.map((l, j) => (j === i ? { ...l, ...patch } : l)),
+    }))
+  const removerLembrete = (i: number) =>
+    setAula((f) => ({ ...f, lembretes: f.lembretes.filter((_, j) => j !== i) }))
 
   // Abre o modal de envio do relatório da aula no WhatsApp, com a mensagem
   // pré-preenchida a partir do relatório salvo no material daquela aula.
@@ -111,8 +128,8 @@ export default function Cronograma() {
     const erros: Record<string, string> = {}
     if (!aula.polo_id) erros.polo_id = 'Selecione o polo.'
     if (!aula.data) erros.data = 'Informe a data da aula.'
-    if (aula.lembrete_dias_antes && !aula.lembrete_texto.trim()) {
-      erros.lembrete_texto = 'Diga o que deve ser lembrado.'
+    if (aula.lembretes.some((l) => !l.texto.trim())) {
+      erros.lembretes = 'Preencha o texto de cada lembrete (ou remova os vazios).'
     }
     if (aula.relatorio_lembrete && !aula.relatorio_lembrete_data) {
       erros.relatorio_lembrete_data = 'Escolha a data do lembrete.'
@@ -120,12 +137,16 @@ export default function Cronograma() {
     setAulaErros(erros)
     if (Object.keys(erros).length) return
     setSalvando(true)
+    const lembretes = aula.lembretes
+      .filter((l) => l.texto.trim())
+      .map((l) => ({ dias_antes: Number(l.dias_antes), texto: l.texto.trim() }))
     const payload = {
       polo_id: aula.polo_id, numero_aula: aula.numero_aula, data: aula.data,
       professor_id: aula.professor_id || null,
       observacoes: aula.observacoes.trim() || null, status: aula.status,
-      lembrete_dias_antes: aula.lembrete_dias_antes ? Number(aula.lembrete_dias_antes) : null,
-      lembrete_texto: aula.lembrete_dias_antes ? aula.lembrete_texto.trim() || null : null,
+      lembretes,
+      // Campos antigos zerados: a lista de lembretes é a fonte da verdade agora.
+      lembrete_dias_antes: null, lembrete_texto: null,
       relatorio_lembrete_data: aula.relatorio_lembrete ? aula.relatorio_lembrete_data || null : null,
     }
     const { error } = editandoAula
@@ -133,6 +154,11 @@ export default function Cronograma() {
       : await supabase.from('cronograma').insert(payload)
     setSalvando(false)
     if (error) { toast.error('Erro ao salvar a aula no cronograma.'); return }
+    const nomePolo = polos.find((p) => p.id === aula.polo_id)?.nome ?? ''
+    registrarLog({
+      acao: editandoAula ? 'editar' : 'criar', entidade: 'cronograma', entidadeId: editandoAula?.id,
+      descricao: `${editandoAula ? 'Editou' : 'Agendou'} a Aula ${aula.numero_aula} do polo "${nomePolo}" (${fmtData(aula.data)}).`,
+    })
     toast.success(editandoAula ? 'Aula atualizada.' : 'Aula agendada.')
     setAulaDrawer(false); carregar()
   }
@@ -142,6 +168,10 @@ export default function Cronograma() {
     const { error } = await supabase.from('cronograma').delete().eq('id', aulaExcluir.id)
     setSalvando(false)
     if (error) { toast.error('Erro ao excluir.'); return }
+    registrarLog({
+      acao: 'excluir', entidade: 'cronograma', entidadeId: aulaExcluir.id,
+      descricao: `Removeu a Aula ${aulaExcluir.numero_aula} do polo "${aulaExcluir.polos?.nome ?? ''}" (${fmtData(aulaExcluir.data)}).`,
+    })
     toast.success('Aula removida do cronograma.')
     setAulaExcluir(null); carregar()
   }
@@ -171,16 +201,15 @@ export default function Cronograma() {
         icon: '✓',
         onClick: () => navigate(`/admin/historico/${h.id}`),
       })),
-    ...aulasFiltradas
-      .filter((c) => c.lembrete_dias_antes != null)
-      .map((c): CalendarItem => ({
-        id: `lembrete-${c.id}`,
-        data: subtrairDias(c.data, c.lembrete_dias_antes!),
-        titulo: `${c.lembrete_texto || 'Lembrete'} (Aula ${c.numero_aula})`,
+    ...aulasFiltradas.flatMap((c) =>
+      (c.lembretes ?? []).map((lb, i): CalendarItem => ({
+        id: `lembrete-${c.id}-${i}`,
+        data: subtrairDias(c.data, lb.dias_antes),
+        titulo: `${lb.texto || 'Lembrete'} (Aula ${c.numero_aula})`,
         color: statusDe('lembrete').color,
         icon: statusDe('lembrete').icon,
         onClick: () => abrirEdicaoAula(c),
-      })),
+      }))),
     ...aulasFiltradas
       .filter((c) => c.relatorio_lembrete_data)
       .map((c): CalendarItem => ({
@@ -200,12 +229,16 @@ export default function Cronograma() {
     { key: 'professor', header: 'Professor', render: (c) => c.professores?.nome ?? '—' },
     { key: 'status', header: 'Status', sortable: true, render: (c) => <StatusBadge status={c.status} /> },
     {
-      key: 'lembrete', header: 'Lembrete',
-      render: (c) => c.lembrete_dias_antes != null
-        ? <span className="text-xs text-[var(--c-text-soft)]">
-            {c.lembrete_texto || 'Lembrete'} · {c.lembrete_dias_antes}d antes
+      key: 'lembrete', header: 'Lembretes',
+      render: (c) => {
+        const ls = c.lembretes ?? []
+        if (!ls.length) return '—'
+        return (
+          <span className="text-xs text-[var(--c-text-soft)]">
+            {ls.map((l) => `${l.texto || 'Lembrete'} (${l.dias_antes}d)`).join(' · ')}
           </span>
-        : '—',
+        )
+      },
     },
     {
       key: 'acoes', header: '',
@@ -402,28 +435,37 @@ export default function Cronograma() {
           </div>
 
           <div className="rounded-lg border border-[var(--c-border)] p-3">
-            <p className="mb-2 text-sm font-semibold">📄 Lembrete (opcional)</p>
+            <p className="mb-2 text-sm font-semibold">📄 Lembretes (opcional)</p>
             <p className="mb-3 text-xs text-[var(--c-text-soft)]">
-              Ex.: lembrar 2 dias antes de organizar os materiais. O lembrete
-              aparece sozinho no calendário na data calculada.
+              Ex.: lembrar 2 dias antes de organizar os materiais. Cada lembrete
+              aparece sozinho no calendário na data calculada. Use “+” para adicionar
+              quantos quiser.
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Dias antes da aula">
-                <select value={aula.lembrete_dias_antes}
-                        onChange={(e) => setAula((f) => ({ ...f, lembrete_dias_antes: e.target.value }))}>
-                  <option value="">Sem lembrete</option>
-                  {OPCOES_LEMBRETE.map((n) => (
-                    <option key={n} value={n}>{n} dia{n > 1 ? 's' : ''} antes</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="O que lembrar" error={aulaErros.lembrete_texto}>
-                <input value={aula.lembrete_texto} placeholder="Ex.: Organizar materiais"
-                       disabled={!aula.lembrete_dias_antes}
-                       aria-invalid={!!aulaErros.lembrete_texto}
-                       onChange={(e) => setAula((f) => ({ ...f, lembrete_texto: e.target.value }))} />
-              </Field>
-            </div>
+
+            {aula.lembretes.map((l, i) => (
+              <div key={i} className="mb-3 grid grid-cols-[auto_1fr_auto] items-end gap-2">
+                <Field label="Dias antes">
+                  <select value={l.dias_antes} className="!w-28"
+                          onChange={(e) => mudarLembrete(i, { dias_antes: Number(e.target.value) })}>
+                    {OPCOES_LEMBRETE.map((n) => (
+                      <option key={n} value={n}>{n} dia{n > 1 ? 's' : ''}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="O que lembrar">
+                  <input value={l.texto} placeholder="Ex.: Organizar materiais"
+                         onChange={(e) => mudarLembrete(i, { texto: e.target.value })} />
+                </Field>
+                <button className="btn btn-ghost !px-3 !py-2 text-[var(--c-danger)]"
+                        onClick={() => removerLembrete(i)} aria-label={`Remover lembrete ${i + 1}`}>
+                  ✕
+                </button>
+              </div>
+            ))}
+            {aulaErros.lembretes && <p className="field-error mb-2">{aulaErros.lembretes}</p>}
+            <button className="btn btn-ghost self-start !py-1.5 text-sm" onClick={adicionarLembrete}>
+              + Adicionar lembrete
+            </button>
           </div>
         </div>
       </Drawer>

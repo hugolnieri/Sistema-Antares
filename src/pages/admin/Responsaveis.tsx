@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Drawer, Field, ConfirmModal } from '../../components/ui'
 import { useToast } from '../../components/Toast'
+import { registrarLog } from '../../lib/logs'
 import type { Responsavel } from '../../lib/types'
 
 const FORM_VAZIO = { nome: '', telefone: '', observacoes: '' }
@@ -61,6 +62,10 @@ export default function Responsaveis() {
       : await supabase.from('responsaveis').insert(payload)
     setSalvando(false)
     if (error) { toast.error('Erro ao salvar o responsável.'); return }
+    registrarLog({
+      acao: editando ? 'editar' : 'criar', entidade: 'responsavel', entidadeId: editando?.id,
+      descricao: `${editando ? 'Editou' : 'Cadastrou'} o responsável "${payload.nome}".`,
+    })
     toast.success(editando ? 'Responsável atualizado.' : 'Responsável cadastrado.')
     setDrawerAberto(false)
     carregar()
@@ -72,6 +77,10 @@ export default function Responsaveis() {
     const { error } = await supabase.from('responsaveis').delete().eq('id', respExcluir.id)
     setSalvando(false)
     if (error) { toast.error('Erro ao excluir o responsável.'); return }
+    registrarLog({
+      acao: 'excluir', entidade: 'responsavel', entidadeId: respExcluir.id,
+      descricao: `Excluiu o responsável "${respExcluir.nome}".`,
+    })
     toast.success('Responsável excluído.')
     setRespExcluir(null)
     setDrawerAberto(false)

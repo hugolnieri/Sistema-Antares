@@ -13,6 +13,7 @@ import Cronograma from './pages/admin/Cronograma'
 import Materiais from './pages/admin/Materiais'
 import Historico from './pages/admin/Historico'
 import HistoricoDetalhe from './pages/admin/HistoricoDetalhe'
+import Logs from './pages/admin/Logs'
 
 import PoloLogin from './pages/professor/PoloLogin'
 import PoloLayout from './pages/professor/PoloLayout'
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="materiais" element={<Materiais />} />
             <Route path="historico" element={<Historico />} />
             <Route path="historico/:id" element={<HistoricoDetalhe />} />
+            <Route path="logs" element={<Logs />} />
           </Route>
 
           {/* Área do professor (link direto do polo) */}

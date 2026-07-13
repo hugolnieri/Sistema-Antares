@@ -93,11 +93,19 @@ create table if not exists cronograma (
   professor_id        uuid references professores(id) on delete set null,
   observacoes         text,
   status              text not null default 'agendada' check (status in ('agendada','concluida','cancelada')),
-  lembrete_dias_antes int,   -- ex.: 2 = lembrar 2 dias antes da aula
-  lembrete_texto      text, -- ex.: "Organizar materiais"
+  lembrete_dias_antes int,   -- LEGADO: 1 lembrete só (migrado para a coluna lembretes)
+  lembrete_texto      text, -- LEGADO: ver lembretes
+  lembretes           jsonb not null default '[]', -- lista [{dias_antes, texto}] — vários lembretes por aula
   relatorio_lembrete_data date, -- se preenchida, lembra de enviar o relatório da aula nesse dia (ex.: aula sáb -> seg)
   created_at          timestamptz not null default now()
 );
+
+-- Migração para bancos já existentes (idempotente):
+alter table cronograma add column if not exists lembretes jsonb not null default '[]';
+update cronograma
+   set lembretes = jsonb_build_array(jsonb_build_object('dias_antes', lembrete_dias_antes, 'texto', coalesce(lembrete_texto, '')))
+ where lembrete_dias_antes is not null
+   and (lembretes is null or lembretes = '[]'::jsonb);
 
 create table if not exists historico_aulas (
   id                uuid primary key default gen_random_uuid(),
@@ -116,10 +124,24 @@ create table if not exists historico_aulas (
 create table if not exists presencas (
   id           uuid primary key default gen_random_uuid(),
   historico_id uuid not null references historico_aulas(id) on delete cascade,
-  aluno_id     uuid not null references alunos(id) on delete cascade,
+  aluno_id     uuid references alunos(id) on delete set null, -- vira null se o aluno for excluído
+  aluno_nome   text,                                          -- nome gravado na chamada: preserva o histórico após a exclusão
   presente     boolean not null,
   unique (historico_id, aluno_id)
 );
+
+-- Migração para bancos já existentes: preserva o histórico ao excluir alunos.
+alter table presencas add column if not exists aluno_nome text;
+update presencas p set aluno_nome = a.nome
+  from alunos a where p.aluno_id = a.id and p.aluno_nome is null;
+alter table presencas alter column aluno_id drop not null;
+do $$
+begin
+  alter table presencas drop constraint if exists presencas_aluno_id_fkey;
+  alter table presencas add constraint presencas_aluno_id_fkey
+    foreign key (aluno_id) references alunos(id) on delete set null;
+exception when others then null;
+end $$;
 
 -- Alunos citados pelo professor na chamada mas que não estão cadastrados.
 -- Viram sugestão de cadastro; o administrativo aprova (cria o aluno) ou recusa.
@@ -144,6 +166,19 @@ create table if not exists solicitacoes_contato (
   created_at  timestamptz not null default now()
 );
 create index if not exists idx_solicitacoes_status on solicitacoes_contato(status);
+
+-- Registro de auditoria: o que cada usuário (admin ou professor) fez no sistema.
+create table if not exists logs (
+  id          uuid primary key default gen_random_uuid(),
+  ator        text not null,                 -- e-mail do admin, "Professor · <polo>" ou "Sistema"
+  ator_tipo   text not null default 'admin' check (ator_tipo in ('admin','professor','sistema')),
+  acao        text not null,                 -- criar | editar | excluir | login | chamada | fotos | ...
+  entidade    text not null,                 -- polo | professor | aluno | responsavel | material | cronograma | chamada | sessao
+  entidade_id text,
+  descricao   text not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_logs_created on logs(created_at desc);
 
 -- Fotos: o banco guarda só metadados. Arquivo fica no Storage
 -- (e futuramente no SharePoint — use url_externa para isso).
@@ -175,7 +210,7 @@ declare t text;
 begin
   foreach t in array array['polos','professores','professor_polos','alunos','responsaveis',
                            'aluno_responsaveis','materiais','cronograma','historico_aulas',
-                           'presencas','fotos_aula','alunos_sugeridos','solicitacoes_contato']
+                           'presencas','fotos_aula','alunos_sugeridos','solicitacoes_contato','logs']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists admin_all on %I', t);

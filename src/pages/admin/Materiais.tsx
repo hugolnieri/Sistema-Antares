@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Drawer, Field, StatusBadge, EmptyState } from '../../components/ui'
 import { useToast } from '../../components/Toast'
+import { registrarLog } from '../../lib/logs'
 import type { Material } from '../../lib/types'
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
@@ -96,6 +97,10 @@ export default function Materiais() {
       : await supabase.from('materiais').insert(payload)
     setSalvando(false)
     if (error) { toast.error('Erro ao salvar o material.'); return }
+    registrarLog({
+      acao: existente ? 'editar' : 'criar', entidade: 'material', entidadeId: existente?.id,
+      descricao: `${existente ? 'Editou' : 'Cadastrou'} o material da Aula ${numeroAula} — "${payload.titulo}".`,
+    })
     toast.success(`Material da Aula ${numeroAula} salvo.`)
     setDrawerAberto(false)
     carregar()

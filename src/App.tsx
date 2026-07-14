@@ -15,6 +15,7 @@ import Materiais from './pages/admin/Materiais'
 import Historico from './pages/admin/Historico'
 import HistoricoDetalhe from './pages/admin/HistoricoDetalhe'
 import Logs from './pages/admin/Logs'
+import GaleriaFotos from './pages/admin/GaleriaFotos'
 import Configuracoes from './pages/admin/Configuracoes'
 
 import PoloLogin from './pages/professor/PoloLogin'
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="materiais" element={<RequireMenu menu="materiais"><Materiais /></RequireMenu>} />
             <Route path="historico" element={<RequireMenu menu="historico"><Historico /></RequireMenu>} />
             <Route path="historico/:id" element={<RequireMenu menu="historico"><HistoricoDetalhe /></RequireMenu>} />
+            <Route path="galeria" element={<RequireMenu menu="galeria"><GaleriaFotos /></RequireMenu>} />
             <Route path="logs" element={<RequireMenu menu="logs"><Logs /></RequireMenu>} />
             <Route path="configuracoes" element={<RequireMenu menu="configuracoes"><Configuracoes /></RequireMenu>} />
           </Route>

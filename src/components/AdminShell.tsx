@@ -42,6 +42,7 @@ const NAV: { to: string; label: string; icon: IconName; menu: string; end?: bool
   { to: '/admin/cronograma', label: 'Cronograma', icon: 'cronograma', menu: 'cronograma' },
   { to: '/admin/materiais', label: 'Materiais', icon: 'materiais', menu: 'materiais' },
   { to: '/admin/historico', label: 'Histórico', icon: 'historico', menu: 'historico' },
+  { to: '/admin/galeria', label: 'Galeria de fotos', icon: 'galeria', menu: 'galeria' },
   { to: '/admin/logs', label: 'Registros', icon: 'logs', menu: 'logs' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: 'config', menu: 'configuracoes' },
 ]
@@ -55,6 +56,7 @@ const TITULOS: Record<string, string> = {
   '/admin/cronograma': 'Calendário / Cronograma',
   '/admin/materiais': 'Materiais didáticos',
   '/admin/historico': 'Histórico de aulas',
+  '/admin/galeria': 'Galeria de fotos',
   '/admin/logs': 'Registros de atividade',
   '/admin/configuracoes': 'Configurações',
 }

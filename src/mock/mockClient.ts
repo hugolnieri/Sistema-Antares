@@ -77,6 +77,19 @@ function embed(db: MockDB, table: string, row: any, sel: string): any {
     }
   }
 
+  if (table === 'fotos_aula' && sel.includes('historico_aulas')) {
+    const h = db.historico_aulas.find((x) => x.id === row.historico_id)
+    r.historico_aulas = h
+      ? {
+          numero_aula: h.numero_aula,
+          ciclo: h.ciclo,
+          data_hora: h.data_hora,
+          professor_nome: h.professor_nome,
+          ...(sel.includes('polos(') ? { polos: nomeDe(db.polos, h.polo_id) } : {}),
+        }
+      : null
+  }
+
   if (table === 'alunos_sugeridos' && sel.includes('polos(')) {
     r.polos = nomeDe(db.polos, row.polo_id)
   }

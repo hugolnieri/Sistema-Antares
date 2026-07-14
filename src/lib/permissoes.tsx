@@ -29,6 +29,7 @@ export const MENUS: { key: string; label: string }[] = [
   { key: 'cronograma', label: 'Cronograma' },
   { key: 'materiais', label: 'Materiais' },
   { key: 'historico', label: 'Histórico' },
+  { key: 'galeria', label: 'Galeria de fotos' },
   { key: 'logs', label: 'Registros' },
   { key: 'configuracoes', label: 'Configurações' },
 ]

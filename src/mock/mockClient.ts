@@ -309,6 +309,11 @@ const auth = {
     listeners.forEach((cb) => cb('SIGNED_OUT', null))
     return { error: null }
   },
+  // Troca de senha do próprio usuário — na demo só simula o sucesso.
+  async updateUser(_attrs: { password?: string }) {
+    await sleep(300)
+    return { data: { user: sessaoAtual()?.user ?? null }, error: null }
+  },
 }
 
 /* ---------------- Storage ---------------- */
@@ -365,6 +370,17 @@ export function storageUrl(bucket: string, path: string): string | null {
 async function rpc(nome: string, params: any) {
   await sleep(200)
   const db = loadDB()
+  // Permissões do usuário logado — espelha a RPC real. Na demonstração
+  // qualquer e-mail entra (permitido: true); restrições valem se o e-mail
+  // estiver em permissoes_usuarios.
+  if (nome === 'minha_permissao') {
+    const email = (localStorage.getItem(AUTH_KEY) ?? '').toLowerCase()
+    const row = db.permissoes_usuarios.find((u) => String(u.email).toLowerCase() === email)
+    return {
+      data: { permitido: !!email, master: false, permissoes: row?.permissoes ?? null },
+      error: null,
+    }
+  }
   if (nome === 'set_polo_password') {
     const polo = db.polos.find((p) => p.id === params.p_polo_id)
     if (!polo) return { data: null, error: { message: 'Polo não encontrado' } }

@@ -1,13 +1,13 @@
-// Controle de acesso do admin: o que cada usuário (e-mail) pode fazer em cada
-// menu. Três níveis: 'editar' | 'ver' | 'nenhum'.
+// Controle de acesso do admin — modelo ALLOWLIST:
+//   * Só entra no sistema o administrador master (configuracoes.admin_master)
+//     e os e-mails cadastrados em permissoes_usuarios.
+//   * Quem está na lista tem três níveis por menu: 'editar' | 'ver' | 'nenhum'
+//     (chave ausente = 'editar', para menus novos não bloquearem por acidente).
+//   * Tudo é validado no SERVIDOR (RPC minha_permissao + RLS + trigger que
+//     impede contas fora da lista). A interface só reflete o que o banco diz.
 //
-// Regra central: usuário SEM registro em permissoes_usuarios tem acesso total
-// (evita trancar todo mundo para fora — restrições são criadas por e-mail em
-// /admin/configuracoes). Registro existente sem a chave de um menu = 'editar'
-// (menus novos não bloqueiam ninguém por acidente).
-//
-// A interface esconde menus e botões, e o schema.sql reforça no servidor:
-// gravações exigem 'editar' via RLS (pode_editar_menu).
+// No modo demonstração qualquer e-mail entra (permitido) e restrições valem
+// se o e-mail estiver na lista — paridade via rpc do mockClient.
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { supabase } from './supabase'
 import { EmptyState } from '../components/ui'
@@ -41,6 +41,8 @@ export interface PermissaoUsuario {
 
 interface PermissoesCtx {
   email: string
+  // true quando é o administrador master (acesso total garantido)
+  master: boolean
   // true quando o usuário logado tem um registro de restrição
   restrito: boolean
   nivel: (menu: string) => NivelPermissao
@@ -50,6 +52,7 @@ interface PermissoesCtx {
 
 const contextoPadrao: PermissoesCtx = {
   email: '',
+  master: false,
   restrito: false,
   nivel: () => 'editar',
   podeVer: () => true,
@@ -58,35 +61,85 @@ const contextoPadrao: PermissoesCtx = {
 
 const Contexto = createContext<PermissoesCtx>(contextoPadrao)
 
-export function PermissoesProvider({ children }: { children: ReactNode }) {
-  const [estado, setEstado] = useState<
-    { email: string; permissoes: Record<string, NivelPermissao> | null } | undefined
-  >(undefined)
+interface EstadoPermissao {
+  email: string
+  permitido: boolean
+  master: boolean
+  permissoes: Record<string, NivelPermissao> | null
+}
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser()
-      const email = (data.user?.email ?? '').trim().toLowerCase()
-      let permissoes: Record<string, NivelPermissao> | null = null
-      if (email) {
-        const { data: rows } = await supabase
-          .from('permissoes_usuarios').select('email, permissoes').eq('email', email).limit(1)
-        permissoes = (rows?.[0] as any)?.permissoes ?? null
-      }
-      setEstado({ email, permissoes })
-    })()
-  }, [])
+export function PermissoesProvider({ children }: { children: ReactNode }) {
+  const [estado, setEstado] = useState<EstadoPermissao | 'erro' | undefined>(undefined)
+
+  const carregar = async () => {
+    setEstado(undefined)
+    const { data: u } = await supabase.auth.getUser()
+    const email = (u.user?.email ?? '').trim().toLowerCase()
+    // Validação no servidor: a RPC decide se o e-mail pode usar o sistema.
+    const { data, error } = await supabase.rpc('minha_permissao')
+    if (error || !data) { setEstado('erro'); return }
+    setEstado({
+      email,
+      permitido: !!(data as any).permitido,
+      master: !!(data as any).master,
+      permissoes: (data as any).permissoes ?? null,
+    })
+  }
+
+  useEffect(() => { carregar() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sair = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/admin/login'
+  }
 
   if (estado === undefined) {
     return <div className="flex h-screen items-center justify-center">Carregando…</div>
   }
 
+  if (estado === 'erro') {
+    return (
+      <div className="flex h-screen items-center justify-center p-4">
+        <div className="card max-w-md">
+          <EmptyState
+            icon="⚠️" title="Não foi possível verificar o seu acesso"
+            message="Verifique a conexão e tente novamente."
+            action={
+              <div className="flex gap-2">
+                <button className="btn btn-primary" onClick={carregar}>Tentar novamente</button>
+                <button className="btn btn-ghost" onClick={sair}>Sair</button>
+              </div>
+            }
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (!estado.permitido) {
+    return (
+      <div className="flex h-screen items-center justify-center p-4">
+        <div className="card max-w-md">
+          <EmptyState
+            icon="🔒" title="Acesso não autorizado"
+            message="Este e-mail não tem permissão para usar o sistema. Fale com o administrador do colégio Antares."
+            action={<button className="btn btn-primary" onClick={sair}>Sair</button>}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Master ou usuário sem mapa de permissões (demo) = acesso total.
   const nivel = (menu: string): NivelPermissao =>
-    estado.permissoes ? ((estado.permissoes[menu] as NivelPermissao) ?? 'editar') : 'editar'
+    estado.master || !estado.permissoes
+      ? 'editar'
+      : ((estado.permissoes[menu] as NivelPermissao) ?? 'editar')
 
   const ctx: PermissoesCtx = {
     email: estado.email,
-    restrito: !!estado.permissoes,
+    master: estado.master,
+    restrito: !estado.master && !!estado.permissoes,
     nivel,
     podeVer: (m) => nivel(m) !== 'nenhum',
     podeEditar: (m) => nivel(m) === 'editar',

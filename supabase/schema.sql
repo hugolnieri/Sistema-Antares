@@ -189,12 +189,22 @@ create table if not exists configuracoes (
   created_at timestamptz not null default now()
 );
 
--- Controle de acesso do admin: permissões por usuário (e-mail) e por menu.
+-- Controle de acesso do admin — ALLOWLIST: só entram no sistema o admin
+-- master (configuracoes.admin_master) e os e-mails desta tabela.
 -- permissoes = { "polos": "editar" | "ver" | "nenhum", ... }.
--- Usuário SEM registro aqui tem acesso total (restrições são por exceção).
 create table if not exists permissoes_usuarios (
   email      text primary key,               -- sempre minúsculo
   permissoes jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+-- Segredos do servidor (token HMAC do professor, credenciais Microsoft
+-- Graph, bootstrap). RLS ligada SEM policies: só a service role acessa.
+-- Chaves usadas: polo_token_secret, bootstrap_token (apagada após o uso),
+-- ms_tenant_id, ms_client_id, ms_client_secret, ms_site_url (Graph).
+create table if not exists segredos (
+  chave      text primary key,
+  valor      text,
   created_at timestamptz not null default now()
 );
 
@@ -219,24 +229,106 @@ create index if not exists idx_fotos_hist         on fotos_aula(historico_id);
 create index if not exists idx_cronograma_data    on cronograma(data);
 
 -- ------------------------------------------------------------
--- RLS: admin (authenticated) LÊ tudo; GRAVAÇÕES exigem permissão de
--- edição do menu correspondente (controle de acesso em /admin/configuracoes).
--- Usuário sem registro em permissoes_usuarios tem acesso total; anon não
--- tem nada. O professor acessa exclusivamente via Edge Function (service role).
+-- SEGURANÇA (allowlist): só entra quem for o admin master ou estiver em
+-- permissoes_usuarios. RLS nega tudo aos demais, mesmo autenticados; um
+-- trigger em auth.users impede contas fora da lista; o professor acessa
+-- exclusivamente via Edge Function (service role).
+-- Aplicado no projeto real via migrações (schema_inicial +
+-- seguranca_allowlist_rls). Este arquivo é o espelho de referência.
 -- ------------------------------------------------------------
 
--- true quando o usuário logado pode EDITAR o menu informado.
--- Sem registro em permissoes_usuarios = acesso total; registro sem a chave
--- do menu = 'editar' (menus novos não bloqueiam ninguém por acidente).
+-- Usuário logado está autorizado a usar o sistema?
+create or replace function public.acesso_permitido()
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select case
+    when coalesce(auth.jwt() ->> 'email', '') = '' then false
+    when lower(auth.jwt() ->> 'email') =
+         (select lower(valor) from configuracoes where chave = 'admin_master') then true
+    else exists (
+      select 1 from permissoes_usuarios p
+       where lower(p.email) = lower(auth.jwt() ->> 'email')
+    )
+  end;
+$$;
+revoke execute on function public.acesso_permitido() from public, anon;
+grant execute on function public.acesso_permitido() to authenticated;
+
+-- Usuário logado pode EDITAR o menu? Master: sempre. Listado: conforme
+-- permissoes (chave ausente = 'editar'). Fora da lista: nunca.
 create or replace function public.pode_editar_menu(p_menu text)
 returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce((
-    select coalesce(p.permissoes->>p_menu, 'editar') = 'editar'
-      from permissoes_usuarios p
-     where lower(p.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
-  ), true);
+  select case
+    when coalesce(auth.jwt() ->> 'email', '') = '' then false
+    when lower(auth.jwt() ->> 'email') =
+         (select lower(valor) from configuracoes where chave = 'admin_master') then true
+    else coalesce((
+      select coalesce(p.permissoes->>p_menu, 'editar') = 'editar'
+        from permissoes_usuarios p
+       where lower(p.email) = lower(auth.jwt() ->> 'email')
+    ), false)
+  end;
 $$;
+revoke execute on function public.pode_editar_menu(text) from public, anon;
+grant execute on function public.pode_editar_menu(text) to authenticated;
+
+-- Permissões do PRÓPRIO usuário logado — o front chama no carregamento.
+create or replace function public.minha_permissao()
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_email  text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  v_master text;
+  v_perm   jsonb;
+begin
+  if v_email = '' then
+    return jsonb_build_object('permitido', false, 'master', false, 'permissoes', null);
+  end if;
+  select lower(valor) into v_master from configuracoes where chave = 'admin_master';
+  if v_email = coalesce(v_master, '') then
+    return jsonb_build_object('permitido', true, 'master', true, 'permissoes', null);
+  end if;
+  select permissoes into v_perm from permissoes_usuarios where lower(email) = v_email;
+  if v_perm is null then
+    return jsonb_build_object('permitido', false, 'master', false, 'permissoes', null);
+  end if;
+  return jsonb_build_object('permitido', true, 'master', false, 'permissoes', v_perm);
+end $$;
+revoke execute on function public.minha_permissao() from public, anon;
+grant execute on function public.minha_permissao() to authenticated;
+
+-- Lookup de usuário do Auth por e-mail — exclusivo da service role.
+create or replace function public.auth_user_id_por_email(p_email text)
+returns uuid
+language sql stable security definer set search_path = public as $$
+  select id from auth.users where lower(email) = lower(p_email) limit 1;
+$$;
+revoke execute on function public.auth_user_id_por_email(text) from public, anon, authenticated;
+grant execute on function public.auth_user_id_por_email(text) to service_role;
+
+-- Trigger: bloqueia a criação de conta no Auth fora da allowlist.
+create or replace function public.bloquear_usuario_nao_permitido()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_master text;
+begin
+  select lower(valor) into v_master from configuracoes where chave = 'admin_master';
+  if lower(coalesce(new.email, '')) = coalesce(v_master, '') then
+    return new;
+  end if;
+  if exists (select 1 from permissoes_usuarios p where lower(p.email) = lower(coalesce(new.email, ''))) then
+    return new;
+  end if;
+  raise exception 'Cadastro não permitido. Fale com o administrador do sistema.';
+end $$;
+
+revoke execute on function public.bloquear_usuario_nao_permitido() from public, anon, authenticated;
+
+drop trigger if exists trg_bloquear_signup on auth.users;
+create trigger trg_bloquear_signup
+  before insert on auth.users
+  for each row execute function public.bloquear_usuario_nao_permitido();
 
 do $$
 declare par text[];
@@ -267,7 +359,7 @@ begin
     execute format('drop policy if exists admin_update on %I', par[1]);
     execute format('drop policy if exists admin_delete on %I', par[1]);
     execute format(
-      'create policy admin_select on %I for select to authenticated using (true)', par[1]);
+      'create policy admin_select on %I for select to authenticated using (acesso_permitido())', par[1]);
     execute format(
       'create policy admin_insert on %I for insert to authenticated with check (pode_editar_menu(%L))',
       par[1], par[2]);
@@ -280,17 +372,30 @@ begin
   end loop;
 end $$;
 
--- Logs de auditoria: todo usuário autenticado lê e registra as próprias
--- ações; ninguém edita nem apaga (sem policy de update/delete).
+-- Logs: quem está na lista lê e registra; ninguém edita nem apaga.
 alter table logs enable row level security;
 drop policy if exists admin_all on logs;
 drop policy if exists logs_select on logs;
 drop policy if exists logs_insert on logs;
-create policy logs_select on logs for select to authenticated using (true);
-create policy logs_insert on logs for insert to authenticated with check (true);
+create policy logs_select on logs for select to authenticated using (acesso_permitido());
+create policy logs_insert on logs for insert to authenticated with check (acesso_permitido());
 
--- A coluna senha_hash nunca deve chegar ao frontend do admin.
-revoke select (senha_hash) on polos from authenticated;
+-- Segredos: RLS sem policies + revoke — só a service role acessa.
+alter table segredos enable row level security;
+revoke all on segredos from anon, authenticated;
+
+-- senha_hash e token_version dos polos nunca chegam ao navegador e não
+-- podem ser alterados diretamente (só via set_polo_password).
+revoke select, update on polos from anon, authenticated;
+grant select (id, nome, slug, cep, logradouro, numero, complemento, bairro,
+              cidade, estado, responsavel, contato, pix, observacoes,
+              latitude, longitude, ciclo_atual, status, created_at)
+  on polos to authenticated;
+grant update (nome, slug, cep, logradouro, numero, complemento, bairro,
+              cidade, estado, responsavel, contato, pix, observacoes,
+              latitude, longitude, ciclo_atual, status)
+  on polos to authenticated;
+grant insert, delete on polos to authenticated;
 
 -- ------------------------------------------------------------
 -- FUNÇÕES DE SENHA DO POLO
@@ -300,7 +405,7 @@ revoke select (senha_hash) on polos from authenticated;
 -- token_version, invalidando todas as sessões antigas de professor.
 create or replace function set_polo_password(p_polo_id uuid, p_password text)
 returns void
-language plpgsql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public, extensions as $$
 begin
   if auth.role() <> 'authenticated' then
     raise exception 'Acesso negado';
@@ -324,7 +429,7 @@ grant  execute on function set_polo_password(uuid, text) to authenticated;
 -- Usada apenas pela Edge Function (service role) para validar login do professor.
 create or replace function verify_polo_password(p_slug text, p_password text)
 returns table (polo_id uuid, nome text, token_version int)
-language sql security definer set search_path = public as $$
+language sql security definer set search_path = public, extensions as $$
   select id, polos.nome, polos.token_version
     from polos
    where slug = p_slug
@@ -351,7 +456,7 @@ drop policy if exists admin_storage_update on storage.objects;
 drop policy if exists admin_storage_delete on storage.objects;
 create policy admin_storage_select on storage.objects
   for select to authenticated
-  using (bucket_id in ('materiais','fotos-aulas'));
+  using (bucket_id in ('materiais','fotos-aulas') and acesso_permitido());
 -- Upload/alteração de arquivos segue o controle de acesso por menu:
 create policy admin_storage_insert on storage.objects
   for insert to authenticated
@@ -377,8 +482,14 @@ create policy admin_storage_delete on storage.objects
   );
 
 -- ------------------------------------------------------------
--- PRONTO. Próximos passos (fora do SQL):
--- 1. Authentication -> Users -> "Add user": crie o usuário administrativo.
--- 2. Faça deploy da Edge Function 'polo' (veja README.md).
--- 3. Defina o secret POLO_TOKEN_SECRET na Edge Function.
+-- PRONTO. Provisionamento do projeto real (já feito em 2026-07):
+-- 1. Seeds (via SQL, fora da migração): configuracoes.admin_master,
+--    segredos.polo_token_secret (aleatório) e segredos.bootstrap_token.
+-- 2. Deploy das Edge Functions 'polo' e 'admin-usuarios'.
+-- 3. Bootstrap do admin master via admin-usuarios { action: 'bootstrap' }
+--    (o bootstrap_token é apagado após o primeiro uso).
+-- 4. Novos usuários: adicionados em /admin/configuracoes — a conta é criada
+--    com a senha padrão e o próprio usuário troca depois (avatar > senha).
+-- 5. Microsoft Graph (fotos no SharePoint): preencher em segredos as chaves
+--    ms_tenant_id, ms_client_id, ms_client_secret, ms_site_url.
 -- ------------------------------------------------------------

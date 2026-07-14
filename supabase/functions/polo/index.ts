@@ -12,8 +12,9 @@
 //   solicitarContato    { token, alunoId, alunoNome, motivo }     -> pedido de contato p/ o admin
 //   sugerirAluno        { token, nome, historicoId? }             -> sugere cadastro de aluno
 //
-// Secrets necessários: POLO_TOKEN_SECRET (defina com `supabase secrets set`).
-// SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são injetados automaticamente.
+// Segredo HMAC: lido da tabela `segredos` (chave 'polo_token_secret'), que tem
+// RLS sem policies — só a service role enxerga. Env POLO_TOKEN_SECRET, se
+// definida, tem prioridade. SUPABASE_URL/SERVICE_ROLE_KEY são automáticos.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -22,7 +23,15 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
-const TOKEN_SECRET = Deno.env.get("POLO_TOKEN_SECRET") ?? "defina-o-secret-polo";
+let tokenSecretCache: string | null = Deno.env.get("POLO_TOKEN_SECRET") ?? null;
+async function getTokenSecret(): Promise<string> {
+  if (tokenSecretCache) return tokenSecretCache;
+  const { data } = await supabase
+    .from("segredos").select("valor").eq("chave", "polo_token_secret").maybeSingle();
+  if (!data?.valor) throw new Error("Segredo polo_token_secret não configurado");
+  tokenSecretCache = data.valor;
+  return tokenSecretCache;
+}
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;   // 5 MB por foto
 const MAX_FOTOS = 10;
@@ -48,7 +57,7 @@ const b64url = (buf: ArrayBuffer | Uint8Array) =>
 
 async function hmacKey() {
   return crypto.subtle.importKey(
-    "raw", enc.encode(TOKEN_SECRET),
+    "raw", enc.encode(await getTokenSecret()),
     { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"],
   );
 }

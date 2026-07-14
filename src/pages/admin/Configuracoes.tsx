@@ -3,6 +3,7 @@ import { supabase, MOCK } from '../../lib/supabase'
 import { Field, ConfirmModal, EmptyState } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { registrarLog } from '../../lib/logs'
+import { adminUsuarios, SENHA_PADRAO } from '../../lib/adminApi'
 import {
   MENUS, NIVEIS, usePermissoes,
   type NivelPermissao, type PermissaoUsuario,
@@ -36,6 +37,7 @@ export default function Configuracoes() {
 
   // --- Controle de acesso ---
   const [usuarios, setUsuarios] = useState<PermissaoUsuario[]>([])
+  const [emailMaster, setEmailMaster] = useState('')
   const [loadingUsuarios, setLoadingUsuarios] = useState(true)
   const [novoEmail, setNovoEmail] = useState('')
   const [salvandoEmail, setSalvandoEmail] = useState<string | null>(null)
@@ -61,10 +63,12 @@ export default function Configuracoes() {
     setLoadingContato(true)
     setLoadingUsuarios(true)
     const [cfgRes, permRes] = await Promise.all([
-      supabase.from('configuracoes').select('chave, valor').eq('chave', CHAVE_CONTATO).limit(1),
+      supabase.from('configuracoes').select('chave, valor'),
       supabase.from('permissoes_usuarios').select('email, permissoes').order('email'),
     ])
-    const row = (cfgRes.data ?? [])[0] as { valor: string | null } | undefined
+    const cfgs = (cfgRes.data ?? []) as { chave: string; valor: string | null }[]
+    const row = cfgs.find((c) => c.chave === CHAVE_CONTATO)
+    setEmailMaster((cfgs.find((c) => c.chave === 'admin_master')?.valor ?? '').toLowerCase())
     setContatoExiste(!!row)
     setContato(row?.valor ?? '')
     setLoadingContato(false)
@@ -100,6 +104,10 @@ export default function Configuracoes() {
       toast.error('Informe um e-mail válido.')
       return
     }
+    if (email === emailMaster) {
+      toast.error('Este é o administrador master — ele já tem acesso total.')
+      return
+    }
     if (usuarios.some((u) => u.email === email)) {
       toast.error('Este usuário já está na lista.')
       return
@@ -111,16 +119,45 @@ export default function Configuracoes() {
     if (email === emailLogado) permissoes.configuracoes = 'editar'
     const { error } = await supabase
       .from('permissoes_usuarios').insert({ email, permissoes })
+    if (error) { setSalvandoEmail(null); toast.error('Erro ao adicionar o usuário.'); return }
+    // Cria a conta de verdade (Auth) com a senha padrão — validado no servidor.
+    try {
+      await adminUsuarios('criarUsuario', email)
+    } catch (e: any) {
+      // Sem conta o acesso não funciona: desfaz a linha para não ficar pela metade.
+      await supabase.from('permissoes_usuarios').delete().eq('email', email)
+      setSalvandoEmail(null)
+      toast.error(e.message ?? 'Erro ao criar a conta do usuário.')
+      return
+    }
     setSalvandoEmail(null)
-    if (error) { toast.error('Erro ao adicionar o usuário.'); return }
     registrarLog({
       acao: 'criar', entidade: 'usuario', entidadeId: email,
-      descricao: `Adicionou restrições de acesso para "${email}".`,
+      descricao: `Liberou o acesso de "${email}" ao sistema (senha padrão).`,
     })
     setUsuarios((us) => [...us, { email, permissoes }].sort((a, b) => a.email.localeCompare(b.email)))
     setExpandidos((s) => new Set(s).add(email)) // já abre o novo para ajustar
     setNovoEmail('')
-    toast.success(`Usuário "${email}" adicionado. Ajuste as permissões e salve.`)
+    toast.success(`Acesso liberado para "${email}". Senha inicial: ${SENHA_PADRAO}`)
+  }
+
+  // Volta a conta do usuário para a senha padrão (ex.: esqueceu a senha).
+  const resetarSenha = async (u: PermissaoUsuario) => {
+    setSalvandoEmail(u.email)
+    try {
+      await adminUsuarios('resetarSenha', u.email)
+      registrarLog({
+        acao: 'senha', entidade: 'usuario', entidadeId: u.email,
+        descricao: `Redefiniu a senha de "${u.email}" para a padrão.`,
+      })
+      toast.success(MOCK
+        ? 'Na demonstração não há contas reais — ação simulada.'
+        : `Senha de "${u.email}" redefinida para ${SENHA_PADRAO}.`)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao redefinir a senha.')
+    } finally {
+      setSalvandoEmail(null)
+    }
   }
 
   const mudarNivel = (email: string, menu: string, nivelNovo: NivelPermissao) =>
@@ -165,18 +202,29 @@ export default function Configuracoes() {
 
   const removerUsuario = async () => {
     if (!usuarioRemover) return
+    if (usuarioRemover.email === emailLogado) {
+      toast.error('Você não pode remover o seu próprio acesso.')
+      setUsuarioRemover(null)
+      return
+    }
     setSalvandoEmail(usuarioRemover.email)
     const { error } = await supabase
       .from('permissoes_usuarios').delete().eq('email', usuarioRemover.email)
+    if (error) { setSalvandoEmail(null); toast.error('Erro ao remover o usuário.'); return }
+    // Apaga também a conta do Auth — o acesso morre na hora.
+    try {
+      await adminUsuarios('removerUsuario', usuarioRemover.email)
+    } catch (e: any) {
+      toast.error(e.message ?? 'A conta pode não ter sido apagada — tente de novo.')
+    }
     setSalvandoEmail(null)
-    if (error) { toast.error('Erro ao remover as restrições.'); return }
     registrarLog({
       acao: 'excluir', entidade: 'usuario', entidadeId: usuarioRemover.email,
-      descricao: `Removeu as restrições de "${usuarioRemover.email}" (voltou a ter acesso total).`,
+      descricao: `Removeu o acesso de "${usuarioRemover.email}" ao sistema.`,
     })
     setUsuarios((us) => us.filter((u) => u.email !== usuarioRemover.email))
     setUsuarioRemover(null)
-    toast.success('Restrições removidas — o usuário voltou a ter acesso total.')
+    toast.success('Usuário removido — ele não consegue mais entrar no sistema.')
   }
 
   return (
@@ -228,24 +276,24 @@ export default function Configuracoes() {
         <div>
           <h2 className="font-bold">🔐 Controle de acesso</h2>
           <p className="mt-1 text-sm text-[var(--c-text-soft)]">
-            Defina o que cada usuário pode fazer em cada menu:{' '}
-            <strong>Editar</strong> (acesso completo), <strong>Só visualizar</strong>{' '}
+            <strong>Somente o administrador master e os e-mails desta lista conseguem
+            entrar no sistema.</strong> Ao adicionar um e-mail, a conta é criada na hora
+            com a senha padrão <strong>{SENHA_PADRAO}</strong> — a pessoa entra e pode
+            trocar a senha clicando no avatar (canto superior direito). Para cada menu,
+            defina: <strong>Editar</strong> (acesso completo), <strong>Só visualizar</strong>{' '}
             (vê tudo, sem botões de criar/editar/excluir) ou <strong>Sem acesso</strong>{' '}
-            (o menu some). Usuários que <strong>não estão nesta lista têm acesso
-            total</strong>. O login dos usuários é criado no Supabase
-            (Authentication → Users) — aqui você só controla as permissões.
+            (o menu some).
           </p>
           <p className="mt-2 text-xs text-[var(--c-text-soft)]">
-            As permissões passam a valer no <strong>próximo login</strong> do usuário
-            (ou ao recarregar a página dele) — não trocam a sessão que já está aberta.
+            Mudanças de permissão valem no <strong>próximo login</strong> do usuário
+            (ou ao recarregar a página dele). Remover um usuário apaga a conta —
+            ele não entra mais.
           </p>
           {MOCK && (
             <p className="mt-2 rounded-lg bg-[var(--c-amber-bg)] px-3 py-2 text-xs text-[var(--c-amber-fg)]">
-              🧪 <strong>Modo demonstração:</strong> os dados ficam no localStorage
-              <strong> deste navegador</strong>. Uma restrição criada aqui não vale
-              para quem entra em outro dispositivo/navegador — isso só é compartilhado
-              com o Supabase real. Para testar agora: saia e entre com o e-mail
-              restrito neste mesmo navegador.
+              🧪 <strong>Modo demonstração:</strong> não há contas reais — qualquer
+              e-mail entra, e as restrições valem se o e-mail estiver na lista.
+              No sistema real (Supabase), só entra quem estiver aqui.
             </p>
           )}
         </div>
@@ -343,10 +391,15 @@ export default function Configuracoes() {
 
                       {!somenteLeitura && (
                         <div className="flex flex-wrap justify-end gap-2">
+                          <button className="btn btn-ghost !py-1.5 text-sm"
+                                  disabled={salvandoEste}
+                                  onClick={() => resetarSenha(u)}>
+                            🔑 Redefinir senha padrão
+                          </button>
                           <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
                                   disabled={salvandoEste}
                                   onClick={() => setUsuarioRemover(u)}>
-                            Remover restrições
+                            Remover acesso
                           </button>
                           <button className="btn btn-primary !py-1.5 text-sm"
                                   disabled={salvandoEste}
@@ -371,10 +424,11 @@ export default function Configuracoes() {
 
       <ConfirmModal
         open={!!usuarioRemover}
-        title="Remover restrições"
-        message={<>Remover as restrições de <strong>{usuarioRemover?.email}</strong>?
-          O usuário voltará a ter <strong>acesso total</strong> ao sistema.</>}
-        confirmLabel="Remover restrições"
+        title="Remover acesso"
+        message={<>Remover o acesso de <strong>{usuarioRemover?.email}</strong>?
+          A conta será apagada e o usuário <strong>não conseguirá mais entrar</strong> no
+          sistema. Esta ação não pode ser desfeita (você pode liberá-lo de novo depois).</>}
+        confirmLabel="Remover acesso"
         loading={salvandoEmail !== null}
         onConfirm={removerUsuario}
         onClose={() => setUsuarioRemover(null)}

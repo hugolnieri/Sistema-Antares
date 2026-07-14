@@ -4,6 +4,8 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { Logo } from './Logo'
 import { Icon, type IconName } from './Icons'
+import { Field, Modal } from './ui'
+import { useToast } from './Toast'
 import { fmtData, subtrairDias } from '../lib/format'
 import { alternarTema, getTema, type Tema } from '../lib/theme'
 import { usePermissoes } from '../lib/permissoes'
@@ -73,6 +75,27 @@ export function AdminShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const notifRef = useRef<HTMLDivElement>(null)
+  const toast = useToast()
+
+  // Troca de senha do próprio usuário (modal aberto pelo avatar)
+  const [senhaModal, setSenhaModal] = useState(false)
+  const [novaSenha, setNovaSenha] = useState('')
+  const [novaSenha2, setNovaSenha2] = useState('')
+  const [senhaErro, setSenhaErro] = useState('')
+  const [trocandoSenha, setTrocandoSenha] = useState(false)
+
+  const trocarSenha = async () => {
+    if (novaSenha.length < 8) { setSenhaErro('A senha deve ter pelo menos 8 caracteres.'); return }
+    if (novaSenha !== novaSenha2) { setSenhaErro('As senhas não coincidem.'); return }
+    setSenhaErro('')
+    setTrocandoSenha(true)
+    const { error } = await supabase.auth.updateUser({ password: novaSenha })
+    setTrocandoSenha(false)
+    if (error) { setSenhaErro('Não foi possível trocar a senha. Tente novamente.'); return }
+    setSenhaModal(false)
+    setNovaSenha(''); setNovaSenha2('')
+    toast.success('Senha alterada com sucesso.')
+  }
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''))
@@ -236,10 +259,14 @@ export function AdminShell() {
               )}
             </div>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--c-primary)] font-bold text-white"
-                 title={email}>
+            <button
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-[var(--c-primary)] font-bold text-white transition-opacity hover:opacity-85"
+              title={`${email} — clique para alterar a senha`}
+              aria-label="Alterar minha senha"
+              onClick={() => { setSenhaErro(''); setSenhaModal(true) }}
+            >
               {inicial}
-            </div>
+            </button>
           </div>
         </header>
 
@@ -252,6 +279,42 @@ export function AdminShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Alterar a própria senha */}
+      <Modal
+        open={senhaModal}
+        title="Alterar minha senha"
+        onClose={() => setSenhaModal(false)}
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setSenhaModal(false)} disabled={trocandoSenha}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={trocarSenha} disabled={trocandoSenha}>
+              {trocandoSenha ? 'Salvando…' : 'Salvar nova senha'}
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-[var(--c-text-soft)]">
+            Conta: <strong>{email}</strong>
+          </p>
+          <Field label="Nova senha" required error={senhaErro || undefined}>
+            <input type="password" value={novaSenha} autoComplete="new-password"
+                   aria-invalid={!!senhaErro}
+                   onChange={(e) => setNovaSenha(e.target.value)} />
+          </Field>
+          <Field label="Confirmar a nova senha" required>
+            <input type="password" value={novaSenha2} autoComplete="new-password"
+                   onChange={(e) => setNovaSenha2(e.target.value)}
+                   onKeyDown={(e) => { if (e.key === 'Enter') trocarSenha() }} />
+          </Field>
+          <p className="text-xs text-[var(--c-text-soft)]">
+            Mínimo de 8 caracteres. Use letras, números e símbolos.
+          </p>
+        </div>
+      </Modal>
     </div>
   )
 }

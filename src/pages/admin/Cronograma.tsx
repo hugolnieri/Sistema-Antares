@@ -8,6 +8,7 @@ import { useToast } from '../../components/Toast'
 import { fmtData, subtrairDias, adicionarDias, hojeISO, proximaSegunda, linkWhatsAppTexto } from '../../lib/format'
 import { statusDe } from '../../lib/status'
 import { registrarLog } from '../../lib/logs'
+import { usePermissoes } from '../../lib/permissoes'
 import type { CronogramaItem, HistoricoAula, LembreteCronograma, Material, Polo, Professor } from '../../lib/types'
 
 const AULA_VAZIA = {
@@ -38,6 +39,8 @@ export default function Cronograma() {
   const [erro, setErro] = useState<string | null>(null)
   const toast = useToast()
   const navigate = useNavigate()
+  const { podeEditar } = usePermissoes()
+  const somenteLeitura = !podeEditar('cronograma')
 
   const [visao, setVisao] = useState<'calendario' | 'lista'>('calendario')
   const [filtroPolo, setFiltroPolo] = useState('')
@@ -250,12 +253,14 @@ export default function Cronograma() {
             </button>
           )}
           <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => abrirEdicaoAula(c)}>
-            Editar
+            {somenteLeitura ? 'Ver' : 'Editar'}
           </button>
-          <button className="btn btn-ghost !px-2 !py-1 text-xs text-[var(--c-danger)]"
-                  onClick={() => setAulaExcluir(c)}>
-            Excluir
-          </button>
+          {!somenteLeitura && (
+            <button className="btn btn-ghost !px-2 !py-1 text-xs text-[var(--c-danger)]"
+                    onClick={() => setAulaExcluir(c)}>
+              Excluir
+            </button>
+          )}
         </div>
       ),
     },
@@ -292,7 +297,9 @@ export default function Cronograma() {
                 onClick={() => setVisao('lista')} aria-pressed={visao === 'lista'}>
           📋 Lista de aulas
         </button>
-        <button className="btn btn-primary ml-auto" onClick={() => abrirNovaAula()}>+ Agendar aula</button>
+        {!somenteLeitura && (
+          <button className="btn btn-primary ml-auto" onClick={() => abrirNovaAula()}>+ Agendar aula</button>
+        )}
       </div>
 
       {visao === 'calendario' ? (
@@ -307,13 +314,16 @@ export default function Cronograma() {
               <span className="flex items-center gap-1"><span className="badge badge--green !px-1.5 !py-0">💬</span> Enviar relatório</span>
             </div>
           </div>
-          <p className="text-xs text-[var(--c-text-soft)]">
-            Clique em qualquer dia do calendário para agendar uma aula nessa data.
-          </p>
+          {!somenteLeitura && (
+            <p className="text-xs text-[var(--c-text-soft)]">
+              Clique em qualquer dia do calendário para agendar uma aula nessa data.
+            </p>
+          )}
           {loading ? (
             <div className="card"><div className="skeleton h-[480px] !rounded-xl" /></div>
           ) : (
-            <CalendarMonth items={calendarItems} onDayClick={(dataISO) => abrirNovaAula(dataISO)} />
+            <CalendarMonth items={calendarItems}
+                           onDayClick={somenteLeitura ? undefined : (dataISO) => abrirNovaAula(dataISO)} />
           )}
         </>
       ) : (
@@ -329,7 +339,8 @@ export default function Cronograma() {
           empty={{
             icon: '📅', title: 'Nenhuma aula agendada',
             message: 'Agende as aulas dos polos para acompanhar o cronograma geral.',
-            action: <button className="btn btn-primary" onClick={() => abrirNovaAula()}>Agendar aula</button>,
+            action: somenteLeitura ? undefined
+              : <button className="btn btn-primary" onClick={() => abrirNovaAula()}>Agendar aula</button>,
           }}
         />
       )}
@@ -337,17 +348,22 @@ export default function Cronograma() {
       {/* Drawer: aula agendada */}
       <Drawer
         open={aulaDrawer}
-        title={editandoAula ? 'Editar aula agendada' : 'Agendar aula'}
+        title={editandoAula
+          ? (somenteLeitura ? 'Aula agendada' : 'Editar aula agendada')
+          : 'Agendar aula'}
         onClose={() => setAulaDrawer(false)}
-        footer={
+        footer={somenteLeitura ? (
+          <button className="btn btn-ghost" onClick={() => setAulaDrawer(false)}>Fechar</button>
+        ) : (
           <>
             <button className="btn btn-ghost" onClick={() => setAulaDrawer(false)}>Cancelar</button>
             <button className="btn btn-primary" onClick={salvarAula} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar'}
             </button>
           </>
-        }
+        )}
       >
+        <fieldset disabled={somenteLeitura} className="contents">
         <div className="flex flex-col gap-4">
           <Field label="Polo" required error={aulaErros.polo_id}>
             <select value={aula.polo_id} aria-invalid={!!aulaErros.polo_id}
@@ -468,6 +484,7 @@ export default function Cronograma() {
             </button>
           </div>
         </div>
+        </fieldset>
       </Drawer>
 
       <ConfirmModal

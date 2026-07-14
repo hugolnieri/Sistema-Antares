@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ToastProvider } from './components/Toast'
 import { AdminShell, RequireAuth } from './components/AdminShell'
+import { PermissoesProvider, RequireMenu } from './lib/permissoes'
 import { MOCK } from './lib/supabase'
 
 import Login from './pages/admin/Login'
@@ -32,21 +33,23 @@ export default function App() {
             path="/admin"
             element={
               <RequireAuth>
-                <AdminShell />
+                <PermissoesProvider>
+                  <AdminShell />
+                </PermissoesProvider>
               </RequireAuth>
             }
           >
-            <Route index element={<Dashboard />} />
-            <Route path="polos" element={<Polos />} />
-            <Route path="professores" element={<Professores />} />
-            <Route path="alunos" element={<Alunos />} />
-            <Route path="responsaveis" element={<Responsaveis />} />
-            <Route path="cronograma" element={<Cronograma />} />
-            <Route path="materiais" element={<Materiais />} />
-            <Route path="historico" element={<Historico />} />
-            <Route path="historico/:id" element={<HistoricoDetalhe />} />
-            <Route path="logs" element={<Logs />} />
-            <Route path="configuracoes" element={<Configuracoes />} />
+            <Route index element={<RequireMenu menu="dashboard"><Dashboard /></RequireMenu>} />
+            <Route path="polos" element={<RequireMenu menu="polos"><Polos /></RequireMenu>} />
+            <Route path="professores" element={<RequireMenu menu="professores"><Professores /></RequireMenu>} />
+            <Route path="alunos" element={<RequireMenu menu="alunos"><Alunos /></RequireMenu>} />
+            <Route path="responsaveis" element={<RequireMenu menu="responsaveis"><Responsaveis /></RequireMenu>} />
+            <Route path="cronograma" element={<RequireMenu menu="cronograma"><Cronograma /></RequireMenu>} />
+            <Route path="materiais" element={<RequireMenu menu="materiais"><Materiais /></RequireMenu>} />
+            <Route path="historico" element={<RequireMenu menu="historico"><Historico /></RequireMenu>} />
+            <Route path="historico/:id" element={<RequireMenu menu="historico"><HistoricoDetalhe /></RequireMenu>} />
+            <Route path="logs" element={<RequireMenu menu="logs"><Logs /></RequireMenu>} />
+            <Route path="configuracoes" element={<RequireMenu menu="configuracoes"><Configuracoes /></RequireMenu>} />
           </Route>
 
           {/* Área do professor (link direto do polo) */}

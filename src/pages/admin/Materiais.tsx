@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Drawer, Field, StatusBadge, EmptyState } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { registrarLog } from '../../lib/logs'
+import { usePermissoes } from '../../lib/permissoes'
 import type { Material } from '../../lib/types'
 
 const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
@@ -12,6 +13,8 @@ export default function Materiais() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const toast = useToast()
+  const { podeEditar } = usePermissoes()
+  const somenteLeitura = !podeEditar('materiais')
 
   const [drawerAberto, setDrawerAberto] = useState(false)
   const [numeroAula, setNumeroAula] = useState(1)
@@ -159,8 +162,8 @@ export default function Materiais() {
                     </button>
                   )}
                   <button className="btn btn-primary !py-1 text-xs" onClick={() => abrirAula(n)}
-                          disabled={loading}>
-                    {m ? 'Editar' : 'Cadastrar'}
+                          disabled={loading || (somenteLeitura && !m)}>
+                    {somenteLeitura ? 'Ver' : m ? 'Editar' : 'Cadastrar'}
                   </button>
                 </div>
               </div>
@@ -173,15 +176,18 @@ export default function Materiais() {
         open={drawerAberto}
         title={`Material — Aula ${numeroAula}`}
         onClose={() => setDrawerAberto(false)}
-        footer={
+        footer={somenteLeitura ? (
+          <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Fechar</button>
+        ) : (
           <>
             <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Cancelar</button>
             <button className="btn btn-primary" onClick={salvar} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar'}
             </button>
           </>
-        }
+        )}
       >
+        <fieldset disabled={somenteLeitura} className="contents">
         <div className="flex flex-col gap-4">
           <Field label="Título" required error={formErros.titulo}>
             <input value={form.titulo} aria-invalid={!!formErros.titulo}
@@ -218,6 +224,7 @@ export default function Materiais() {
             </select>
           </Field>
         </div>
+        </fieldset>
       </Drawer>
     </>
   )

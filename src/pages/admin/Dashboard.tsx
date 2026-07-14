@@ -5,6 +5,7 @@ import { KpiCard, StatusBadge, EmptyState } from '../../components/ui'
 import { statusDe } from '../../lib/status'
 import { fmtData, fmtDataHora, subtrairDias } from '../../lib/format'
 import { useToast } from '../../components/Toast'
+import { usePermissoes } from '../../lib/permissoes'
 import type { CronogramaItem, HistoricoAula, SolicitacaoContato } from '../../lib/types'
 
 interface Kpis {
@@ -30,6 +31,8 @@ export default function Dashboard() {
   const [pedidos, setPedidos] = useState<SolicitacaoContato[]>([])
   const [erro, setErro] = useState('')
   const toast = useToast()
+  const { podeEditar } = usePermissoes()
+  const somenteLeitura = !podeEditar('dashboard')
 
   const agora = new Date()
   const hoje = agora.toLocaleDateString('en-CA')
@@ -181,9 +184,11 @@ export default function Dashboard() {
                 <Link to="/admin/alunos" className="btn btn-ghost !px-3 !py-1 text-xs">
                   Ver alunos
                 </Link>
-                <button className="btn btn-primary !px-3 !py-1 text-xs" onClick={() => atenderPedido(s.id)}>
-                  Marcar como atendida
-                </button>
+                {!somenteLeitura && (
+                  <button className="btn btn-primary !px-3 !py-1 text-xs" onClick={() => atenderPedido(s.id)}>
+                    Marcar como atendida
+                  </button>
+                )}
               </li>
             ))}
           </ul>

@@ -4,6 +4,7 @@ import { DataTable, type Column } from '../../components/DataTable'
 import { Drawer, Field, ConfirmModal, StatusBadge } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { registrarLog } from '../../lib/logs'
+import { usePermissoes } from '../../lib/permissoes'
 import type { Polo, Professor } from '../../lib/types'
 
 const FORM_VAZIO = {
@@ -18,6 +19,8 @@ export default function Professores() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const toast = useToast()
+  const { podeEditar } = usePermissoes()
+  const somenteLeitura = !podeEditar('professores')
 
   const [drawerAberto, setDrawerAberto] = useState(false)
   const [editando, setEditando] = useState<Professor | null>(null)
@@ -179,7 +182,7 @@ export default function Professores() {
     },
     {
       key: 'status', header: 'Status', sortable: true,
-      render: (p) => (
+      render: (p) => somenteLeitura ? <StatusBadge status={p.status} /> : (
         <button
           className="border-0 bg-transparent p-0 cursor-pointer hover:opacity-80"
           title={p.status === 'ativo' ? 'Clique para inativar o professor' : 'Clique para reativar o professor'}
@@ -220,29 +223,36 @@ export default function Professores() {
         onRowClick={(p) => abrirEdicao(p)}
         searchValue={(p) => `${p.nome} ${p.contato ?? ''}`}
         searchPlaceholder="Buscar professor…"
-        toolbar={<button className="btn btn-primary" onClick={abrirNovo}>+ Novo professor</button>}
+        toolbar={somenteLeitura ? undefined
+          : <button className="btn btn-primary" onClick={abrirNovo}>+ Novo professor</button>}
         empty={{
           icon: '🧑‍🏫', title: 'Nenhum professor cadastrado',
           message: 'Cadastre professores e vincule-os aos polos onde atuam.',
-          action: <button className="btn btn-primary" onClick={abrirNovo}>Cadastrar professor</button>,
+          action: somenteLeitura ? undefined
+            : <button className="btn btn-primary" onClick={abrirNovo}>Cadastrar professor</button>,
         }}
       />
 
       <Drawer
         open={drawerAberto}
-        title={editando ? `Editar professor — ${editando.nome}` : 'Novo professor'}
+        title={editando
+          ? `${somenteLeitura ? 'Professor' : 'Editar professor'} — ${editando.nome}`
+          : 'Novo professor'}
         onClose={() => setDrawerAberto(false)}
-        footer={
+        footer={somenteLeitura ? (
+          <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Fechar</button>
+        ) : (
           <>
             <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Cancelar</button>
             <button className="btn btn-primary" onClick={salvar} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar'}
             </button>
           </>
-        }
+        )}
       >
+        <fieldset disabled={somenteLeitura} className="contents">
         <div className="flex flex-col gap-4">
-          {editando && (
+          {editando && !somenteLeitura && (
             <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
               <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
                       onClick={() => setProfExcluir(editando)}>
@@ -292,6 +302,7 @@ export default function Professores() {
                       onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))} />
           </Field>
         </div>
+        </fieldset>
       </Drawer>
 
       <ConfirmModal

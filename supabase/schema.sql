@@ -189,6 +189,15 @@ create table if not exists configuracoes (
   created_at timestamptz not null default now()
 );
 
+-- Controle de acesso do admin: permissões por usuário (e-mail) e por menu.
+-- permissoes = { "polos": "editar" | "ver" | "nenhum", ... }.
+-- Usuário SEM registro aqui tem acesso total (restrições são por exceção).
+create table if not exists permissoes_usuarios (
+  email      text primary key,               -- sempre minúsculo
+  permissoes jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+
 -- Fotos: o banco guarda só metadados. Arquivo fica no Storage
 -- (e futuramente no SharePoint — use url_externa para isso).
 create table if not exists fotos_aula (
@@ -210,24 +219,75 @@ create index if not exists idx_fotos_hist         on fotos_aula(historico_id);
 create index if not exists idx_cronograma_data    on cronograma(data);
 
 -- ------------------------------------------------------------
--- RLS: admin (authenticated) tem acesso total; anon não tem nada.
--- O professor acessa exclusivamente via Edge Function (service role).
+-- RLS: admin (authenticated) LÊ tudo; GRAVAÇÕES exigem permissão de
+-- edição do menu correspondente (controle de acesso em /admin/configuracoes).
+-- Usuário sem registro em permissoes_usuarios tem acesso total; anon não
+-- tem nada. O professor acessa exclusivamente via Edge Function (service role).
 -- ------------------------------------------------------------
 
+-- true quando o usuário logado pode EDITAR o menu informado.
+-- Sem registro em permissoes_usuarios = acesso total; registro sem a chave
+-- do menu = 'editar' (menus novos não bloqueiam ninguém por acidente).
+create or replace function public.pode_editar_menu(p_menu text)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((
+    select coalesce(p.permissoes->>p_menu, 'editar') = 'editar'
+      from permissoes_usuarios p
+     where lower(p.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  ), true);
+$$;
+
 do $$
-declare t text;
+declare par text[];
 begin
-  foreach t in array array['polos','professores','professor_polos','alunos','responsaveis',
-                           'aluno_responsaveis','materiais','cronograma','historico_aulas',
-                           'presencas','fotos_aula','alunos_sugeridos','solicitacoes_contato','logs',
-                           'configuracoes']
+  -- [tabela, menu que controla a gravação]
+  foreach par slice 1 in array array[
+    ['polos','polos'],
+    ['professores','professores'],
+    ['professor_polos','professores'],
+    ['alunos','alunos'],
+    ['aluno_responsaveis','alunos'],
+    ['alunos_sugeridos','alunos'],
+    ['responsaveis','responsaveis'],
+    ['materiais','materiais'],
+    ['cronograma','cronograma'],
+    ['historico_aulas','historico'],
+    ['presencas','historico'],
+    ['fotos_aula','historico'],
+    ['solicitacoes_contato','dashboard'],
+    ['configuracoes','configuracoes'],
+    ['permissoes_usuarios','configuracoes']
+  ]
   loop
-    execute format('alter table %I enable row level security', t);
-    execute format('drop policy if exists admin_all on %I', t);
+    execute format('alter table %I enable row level security', par[1]);
+    execute format('drop policy if exists admin_all on %I', par[1]);
+    execute format('drop policy if exists admin_select on %I', par[1]);
+    execute format('drop policy if exists admin_insert on %I', par[1]);
+    execute format('drop policy if exists admin_update on %I', par[1]);
+    execute format('drop policy if exists admin_delete on %I', par[1]);
     execute format(
-      'create policy admin_all on %I for all to authenticated using (true) with check (true)', t);
+      'create policy admin_select on %I for select to authenticated using (true)', par[1]);
+    execute format(
+      'create policy admin_insert on %I for insert to authenticated with check (pode_editar_menu(%L))',
+      par[1], par[2]);
+    execute format(
+      'create policy admin_update on %I for update to authenticated using (pode_editar_menu(%L)) with check (pode_editar_menu(%L))',
+      par[1], par[2], par[2]);
+    execute format(
+      'create policy admin_delete on %I for delete to authenticated using (pode_editar_menu(%L))',
+      par[1], par[2]);
   end loop;
 end $$;
+
+-- Logs de auditoria: todo usuário autenticado lê e registra as próprias
+-- ações; ninguém edita nem apaga (sem policy de update/delete).
+alter table logs enable row level security;
+drop policy if exists admin_all on logs;
+drop policy if exists logs_select on logs;
+drop policy if exists logs_insert on logs;
+create policy logs_select on logs for select to authenticated using (true);
+create policy logs_insert on logs for insert to authenticated with check (true);
 
 -- A coluna senha_hash nunca deve chegar ao frontend do admin.
 revoke select (senha_hash) on polos from authenticated;
@@ -243,6 +303,10 @@ returns void
 language plpgsql security definer set search_path = public as $$
 begin
   if auth.role() <> 'authenticated' then
+    raise exception 'Acesso negado';
+  end if;
+  -- Controle de acesso: trocar senha de polo exige permissão de edição em Polos.
+  if not pode_editar_menu('polos') then
     raise exception 'Acesso negado';
   end if;
   if length(coalesce(p_password, '')) < 4 then
@@ -281,10 +345,36 @@ values ('materiais', 'materiais', false), ('fotos-aulas', 'fotos-aulas', false)
 on conflict (id) do nothing;
 
 drop policy if exists admin_storage_all on storage.objects;
-create policy admin_storage_all on storage.objects
-  for all to authenticated
-  using (bucket_id in ('materiais','fotos-aulas'))
-  with check (bucket_id in ('materiais','fotos-aulas'));
+drop policy if exists admin_storage_select on storage.objects;
+drop policy if exists admin_storage_insert on storage.objects;
+drop policy if exists admin_storage_update on storage.objects;
+drop policy if exists admin_storage_delete on storage.objects;
+create policy admin_storage_select on storage.objects
+  for select to authenticated
+  using (bucket_id in ('materiais','fotos-aulas'));
+-- Upload/alteração de arquivos segue o controle de acesso por menu:
+create policy admin_storage_insert on storage.objects
+  for insert to authenticated
+  with check (
+    (bucket_id = 'materiais'   and pode_editar_menu('materiais'))
+    or (bucket_id = 'fotos-aulas' and pode_editar_menu('historico'))
+  );
+create policy admin_storage_update on storage.objects
+  for update to authenticated
+  using (
+    (bucket_id = 'materiais'   and pode_editar_menu('materiais'))
+    or (bucket_id = 'fotos-aulas' and pode_editar_menu('historico'))
+  )
+  with check (
+    (bucket_id = 'materiais'   and pode_editar_menu('materiais'))
+    or (bucket_id = 'fotos-aulas' and pode_editar_menu('historico'))
+  );
+create policy admin_storage_delete on storage.objects
+  for delete to authenticated
+  using (
+    (bucket_id = 'materiais'   and pode_editar_menu('materiais'))
+    or (bucket_id = 'fotos-aulas' and pode_editar_menu('historico'))
+  );
 
 -- ------------------------------------------------------------
 -- PRONTO. Próximos passos (fora do SQL):

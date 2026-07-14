@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-14** — chore: update recent commits in CLAUDE.md (299d55e)
 - **2026-07-14** — Menu Configuracoes com WhatsApp central para consultas de responsaveis (9157c78)
 - **2026-07-13** — chore: update recent commits in CLAUDE.md (28e87fd)
 - **2026-07-13** — Exclusoes, logs de auditoria, multiplos lembretes e recomendar aluno na chamada (a4d9dfa)
 - **2026-07-10** — Lembrete de relatorio acima do lembrete opcional + sugestoes de data (0810bbf)
-- **2026-07-10** — Adiciona relatorio da aula em Materiais e lembrete de envio no WhatsApp (5335930)
 
 (Updated automatically by git post-commit hook)
 

@@ -7,6 +7,7 @@ import { useToast } from '../../components/Toast'
 import { fmtData, fmtDataHora } from '../../lib/format'
 import { baixarModeloAlunos, lerPlanilhaAlunos, type LinhaPlanilhaAlunos } from '../../lib/planilhaAlunos'
 import { registrarLog } from '../../lib/logs'
+import { usePermissoes } from '../../lib/permissoes'
 import type { Aluno, AlunoSugerido, Polo, Responsavel } from '../../lib/types'
 
 const FORM_VAZIO = {
@@ -33,6 +34,8 @@ export default function Alunos() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const toast = useToast()
+  const { podeEditar } = usePermissoes()
+  const somenteLeitura = !podeEditar('alunos')
 
   const [searchParams, setSearchParams] = useSearchParams()
   const filtroPolo = searchParams.get('polo') ?? ''
@@ -366,7 +369,7 @@ export default function Alunos() {
     },
     {
       key: 'status', header: 'Status', sortable: true,
-      render: (a) => (
+      render: (a) => somenteLeitura ? <StatusBadge status={a.status} /> : (
         <button
           className="border-0 bg-transparent p-0 cursor-pointer hover:opacity-80"
           title={a.status === 'ativo' ? 'Clique para inativar o aluno' : 'Clique para reativar o aluno'}
@@ -400,14 +403,18 @@ export default function Alunos() {
                   </p>
                 </div>
                 <StatusBadge status="pendente" />
-                <button className="btn btn-primary !px-3 !py-1 text-xs"
-                        disabled={salvando} onClick={() => aprovarSugestao(s)}>
-                  Aprovar cadastro
-                </button>
-                <button className="btn btn-ghost !px-3 !py-1 text-xs text-[var(--c-danger)]"
-                        disabled={salvando} onClick={() => recusarSugestao(s)}>
-                  Recusar
-                </button>
+                {!somenteLeitura && (
+                  <>
+                    <button className="btn btn-primary !px-3 !py-1 text-xs"
+                            disabled={salvando} onClick={() => aprovarSugestao(s)}>
+                      Aprovar cadastro
+                    </button>
+                    <button className="btn btn-ghost !px-3 !py-1 text-xs text-[var(--c-danger)]"
+                            disabled={salvando} onClick={() => recusarSugestao(s)}>
+                      Recusar
+                    </button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -428,14 +435,18 @@ export default function Alunos() {
             <button className="btn btn-ghost" onClick={() => baixarModeloAlunos(polos.map((p) => p.nome))}>
               📥 Baixar modelo
             </button>
-            <input
-              ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={(e) => selecionarArquivoImportacao(e.target.files?.[0] ?? null)}
-            />
-            <button className="btn btn-ghost" onClick={() => importInputRef.current?.click()}>
-              📤 Importar planilha
-            </button>
-            <button className="btn btn-primary" onClick={abrirNovo}>+ Novo aluno</button>
+            {!somenteLeitura && (
+              <>
+                <input
+                  ref={importInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                  onChange={(e) => selecionarArquivoImportacao(e.target.files?.[0] ?? null)}
+                />
+                <button className="btn btn-ghost" onClick={() => importInputRef.current?.click()}>
+                  📤 Importar planilha
+                </button>
+                <button className="btn btn-primary" onClick={abrirNovo}>+ Novo aluno</button>
+              </>
+            )}
           </div>
         }
         filters={
@@ -454,40 +465,48 @@ export default function Alunos() {
         empty={{
           icon: '🎓', title: 'Nenhum aluno cadastrado',
           message: 'Cadastre alunos e vincule cada um ao seu polo.',
-          action: <button className="btn btn-primary" onClick={abrirNovo}>Cadastrar aluno</button>,
+          action: somenteLeitura ? undefined
+            : <button className="btn btn-primary" onClick={abrirNovo}>Cadastrar aluno</button>,
         }}
       />
 
       {/* Drawer criar/editar */}
       <Drawer
         open={drawerAberto}
-        title={editando ? `Editar aluno — ${editando.nome}` : 'Novo aluno'}
+        title={editando
+          ? `${somenteLeitura ? 'Aluno' : 'Editar aluno'} — ${editando.nome}`
+          : 'Novo aluno'}
         onClose={() => setDrawerAberto(false)}
-        footer={
+        footer={somenteLeitura ? (
+          <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Fechar</button>
+        ) : (
           <>
             <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Cancelar</button>
             <button className="btn btn-primary" onClick={salvar} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar'}
             </button>
           </>
-        }
+        )}
       >
         <div className="flex flex-col gap-4">
-          <Field label="Nome" required error={formErros.nome}>
-            <input value={form.nome} aria-invalid={!!formErros.nome}
-                   onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
-          </Field>
           {editando && (
             <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
               <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => abrirHistorico(editando)}>
                 🕘 Ver presenças
               </button>
-              <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
-                      onClick={() => { setExcluirResp(false); setAlunoExcluir(editando) }}>
-                🗑️ Excluir aluno
-              </button>
+              {!somenteLeitura && (
+                <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
+                        onClick={() => { setExcluirResp(false); setAlunoExcluir(editando) }}>
+                  🗑️ Excluir aluno
+                </button>
+              )}
             </div>
           )}
+          <fieldset disabled={somenteLeitura} className="contents">
+          <Field label="Nome" required error={formErros.nome}>
+            <input value={form.nome} aria-invalid={!!formErros.nome}
+                   onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
+          </Field>
           <Field label="Polo" required error={formErros.polo_id}>
             <select value={form.polo_id} aria-invalid={!!formErros.polo_id}
                     onChange={(e) => setForm((f) => ({ ...f, polo_id: e.target.value }))}>
@@ -552,6 +571,7 @@ export default function Alunos() {
             <textarea rows={3} value={form.observacoes}
                       onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))} />
           </Field>
+          </fieldset>
         </div>
       </Drawer>
 

@@ -4,6 +4,7 @@ import { DataTable, type Column } from '../../components/DataTable'
 import { Drawer, Field, ConfirmModal } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { registrarLog } from '../../lib/logs'
+import { usePermissoes } from '../../lib/permissoes'
 import type { Responsavel } from '../../lib/types'
 
 const FORM_VAZIO = { nome: '', telefone: '', observacoes: '' }
@@ -13,6 +14,8 @@ export default function Responsaveis() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
   const toast = useToast()
+  const { podeEditar } = usePermissoes()
+  const somenteLeitura = !podeEditar('responsaveis')
 
   const [drawerAberto, setDrawerAberto] = useState(false)
   const [editando, setEditando] = useState<Responsavel | null>(null)
@@ -115,29 +118,36 @@ export default function Responsaveis() {
           `${r.nome} ${r.telefone ?? ''} ` +
           (r.aluno_responsaveis ?? []).map((ar) => ar.alunos?.nome ?? '').join(' ')}
         searchPlaceholder="Buscar por responsável ou nome do aluno…"
-        toolbar={<button className="btn btn-primary" onClick={abrirNovo}>+ Novo responsável</button>}
+        toolbar={somenteLeitura ? undefined
+          : <button className="btn btn-primary" onClick={abrirNovo}>+ Novo responsável</button>}
         empty={{
           icon: '👪', title: 'Nenhum responsável cadastrado',
           message: 'Cadastre responsáveis e vincule-os aos alunos na tela de Alunos.',
-          action: <button className="btn btn-primary" onClick={abrirNovo}>Cadastrar responsável</button>,
+          action: somenteLeitura ? undefined
+            : <button className="btn btn-primary" onClick={abrirNovo}>Cadastrar responsável</button>,
         }}
       />
 
       <Drawer
         open={drawerAberto}
-        title={editando ? `Editar responsável — ${editando.nome}` : 'Novo responsável'}
+        title={editando
+          ? `${somenteLeitura ? 'Responsável' : 'Editar responsável'} — ${editando.nome}`
+          : 'Novo responsável'}
         onClose={() => setDrawerAberto(false)}
-        footer={
+        footer={somenteLeitura ? (
+          <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Fechar</button>
+        ) : (
           <>
             <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Cancelar</button>
             <button className="btn btn-primary" onClick={salvar} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar'}
             </button>
           </>
-        }
+        )}
       >
+        <fieldset disabled={somenteLeitura} className="contents">
         <div className="flex flex-col gap-4">
-          {editando && (
+          {editando && !somenteLeitura && (
             <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
               <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
                       onClick={() => setRespExcluir(editando)}>
@@ -161,6 +171,7 @@ export default function Responsaveis() {
             O vínculo com alunos (e o parentesco) é feito na tela de Alunos, ao editar o aluno.
           </p>
         </div>
+        </fieldset>
       </Drawer>
 
       <ConfirmModal

@@ -8,6 +8,7 @@ import { useToast } from '../../components/Toast'
 import { gerarSlug, linkDoPolo } from '../../lib/format'
 import { enderecoBuscavel, geocodificarEndereco } from '../../lib/geocode'
 import { registrarLog } from '../../lib/logs'
+import { usePermissoes } from '../../lib/permissoes'
 import type { Polo } from '../../lib/types'
 
 const UFS = [
@@ -33,6 +34,8 @@ export default function Polos() {
     'ocioso' | 'buscando' | 'encontrado' | 'nao-encontrado'
   >('ocioso')
   const toast = useToast()
+  const { podeEditar } = usePermissoes()
+  const somenteLeitura = !podeEditar('polos')
 
   // Drawer criar/editar
   const [drawerAberto, setDrawerAberto] = useState(false)
@@ -282,7 +285,7 @@ export default function Polos() {
     },
     {
       key: 'status', header: 'Status', sortable: true,
-      render: (p) => (
+      render: (p) => somenteLeitura ? <StatusBadge status={p.status} /> : (
         <button
           className="border-0 bg-transparent p-0 cursor-pointer hover:opacity-80"
           title={p.status === 'ativo' ? 'Clique para inativar o polo' : 'Clique para reativar o polo'}
@@ -311,7 +314,7 @@ export default function Polos() {
         >
           🗺️ Mapa
         </button>
-        {visao === 'mapa' && (
+        {visao === 'mapa' && !somenteLeitura && (
           <button className="btn btn-primary ml-auto" onClick={abrirNovo}>+ Novo polo</button>
         )}
       </div>
@@ -332,11 +335,13 @@ export default function Polos() {
         onRowClick={(p) => abrirEdicao(p)}
         searchValue={(p) => `${p.nome} ${p.slug} ${p.responsavel ?? ''}`}
         searchPlaceholder="Buscar polo…"
-        toolbar={<button className="btn btn-primary" onClick={abrirNovo}>+ Novo polo</button>}
+        toolbar={somenteLeitura ? undefined
+          : <button className="btn btn-primary" onClick={abrirNovo}>+ Novo polo</button>}
         empty={{
           icon: '📍', title: 'Nenhum polo cadastrado',
           message: 'Crie o primeiro polo para gerar o link de acesso do professor.',
-          action: <button className="btn btn-primary" onClick={abrirNovo}>Criar polo</button>,
+          action: somenteLeitura ? undefined
+            : <button className="btn btn-primary" onClick={abrirNovo}>Criar polo</button>,
         }}
       />
       )}
@@ -344,17 +349,22 @@ export default function Polos() {
       {/* Drawer criar/editar */}
       <Drawer
         open={drawerAberto}
-        title={editando ? `Editar polo — ${editando.nome}` : 'Novo polo'}
+        title={editando
+          ? `${somenteLeitura ? 'Polo' : 'Editar polo'} — ${editando.nome}`
+          : 'Novo polo'}
         onClose={() => setDrawerAberto(false)}
-        footer={
+        footer={somenteLeitura ? (
+          <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Fechar</button>
+        ) : (
           <>
             <button className="btn btn-ghost" onClick={() => setDrawerAberto(false)}>Cancelar</button>
             <button className="btn btn-primary" onClick={salvar} disabled={salvando}>
               {salvando ? 'Salvando…' : 'Salvar'}
             </button>
           </>
-        }
+        )}
       >
+        <fieldset disabled={somenteLeitura} className="contents">
         <div className="flex flex-col gap-4">
           <Field label="Nome do polo" required error={formErros.nome}>
             <input value={form.nome} aria-invalid={!!formErros.nome}
@@ -369,19 +379,23 @@ export default function Polos() {
           )}
           {editando && (
             <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--c-border)] p-3">
-              <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => setPoloSenha(editando)}>
-                🔑 Alterar senha
-              </button>
+              {!somenteLeitura && (
+                <button className="btn btn-ghost !py-1.5 text-sm" onClick={() => setPoloSenha(editando)}>
+                  🔑 Alterar senha
+                </button>
+              )}
               <Link to={`/admin/alunos?polo=${editando.id}`} className="btn btn-ghost !py-1.5 text-sm">
                 🎓 Ver alunos
               </Link>
               <Link to={`/admin/historico?polo=${editando.id}`} className="btn btn-ghost !py-1.5 text-sm">
                 🕘 Ver histórico
               </Link>
-              <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
-                      onClick={() => setPoloExcluir(editando)}>
-                🗑️ Excluir polo
-              </button>
+              {!somenteLeitura && (
+                <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
+                        onClick={() => setPoloExcluir(editando)}>
+                  🗑️ Excluir polo
+                </button>
+              )}
             </div>
           )}
           <div className="rounded-lg border border-[var(--c-border)] p-3">
@@ -495,6 +509,7 @@ export default function Polos() {
             </p>
           )}
         </div>
+        </fieldset>
       </Drawer>
 
       {/* Modal de senha */}

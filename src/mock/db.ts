@@ -18,6 +18,7 @@ export interface MockDB {
   solicitacoes_contato: any[]
   logs: any[]
   configuracoes: any[]
+  permissoes_usuarios: any[]
 }
 
 const KEY = 'antares-mock-db'
@@ -151,6 +152,19 @@ function seed(): MockDB {
       // WhatsApp do responsável do colégio Antares — recebe as consultas dos professores.
       { chave: 'contato_antares', valor: '(11) 98888-0000' },
     ],
+    permissoes_usuarios: [
+      // Exemplo de usuário restrito na demo: entre com este e-mail (qualquer
+      // senha) para ver o efeito. Quem não está nesta lista tem acesso total.
+      {
+        email: 'secretaria@antares.com',
+        permissoes: {
+          dashboard: 'ver', polos: 'ver', professores: 'nenhum', alunos: 'editar',
+          responsaveis: 'editar', cronograma: 'ver', materiais: 'ver',
+          historico: 'ver', logs: 'nenhum', configuracoes: 'nenhum',
+        },
+        created_at: diasAtras(10),
+      },
+    ],
   }
 }
 
@@ -164,6 +178,7 @@ export function loadDB(): MockDB {
       if (!db.solicitacoes_contato) db.solicitacoes_contato = []
       if (!db.logs) db.logs = []
       if (!db.configuracoes) db.configuracoes = []
+      if (!db.permissoes_usuarios) db.permissoes_usuarios = []
       for (const s of db.solicitacoes_contato) if (s.motivo === undefined) s.motivo = null
       delete (db as any).eventos
       for (const c of db.cronograma) {

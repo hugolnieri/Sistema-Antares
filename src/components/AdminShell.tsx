@@ -6,6 +6,7 @@ import { Logo } from './Logo'
 import { Icon, type IconName } from './Icons'
 import { fmtData, subtrairDias } from '../lib/format'
 import { alternarTema, getTema, type Tema } from '../lib/theme'
+import { usePermissoes } from '../lib/permissoes'
 
 /* ---------- Guarda de autenticação ---------- */
 
@@ -32,17 +33,17 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
 /* ---------- Navegação lateral ---------- */
 
-const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
-  { to: '/admin', label: 'Dashboard', icon: 'dashboard', end: true },
-  { to: '/admin/polos', label: 'Polos', icon: 'polos' },
-  { to: '/admin/professores', label: 'Professores', icon: 'professores' },
-  { to: '/admin/alunos', label: 'Alunos', icon: 'alunos' },
-  { to: '/admin/responsaveis', label: 'Responsáveis', icon: 'responsaveis' },
-  { to: '/admin/cronograma', label: 'Cronograma', icon: 'cronograma' },
-  { to: '/admin/materiais', label: 'Materiais', icon: 'materiais' },
-  { to: '/admin/historico', label: 'Histórico', icon: 'historico' },
-  { to: '/admin/logs', label: 'Registros', icon: 'logs' },
-  { to: '/admin/configuracoes', label: 'Configurações', icon: 'config' },
+const NAV: { to: string; label: string; icon: IconName; menu: string; end?: boolean }[] = [
+  { to: '/admin', label: 'Dashboard', icon: 'dashboard', menu: 'dashboard', end: true },
+  { to: '/admin/polos', label: 'Polos', icon: 'polos', menu: 'polos' },
+  { to: '/admin/professores', label: 'Professores', icon: 'professores', menu: 'professores' },
+  { to: '/admin/alunos', label: 'Alunos', icon: 'alunos', menu: 'alunos' },
+  { to: '/admin/responsaveis', label: 'Responsáveis', icon: 'responsaveis', menu: 'responsaveis' },
+  { to: '/admin/cronograma', label: 'Cronograma', icon: 'cronograma', menu: 'cronograma' },
+  { to: '/admin/materiais', label: 'Materiais', icon: 'materiais', menu: 'materiais' },
+  { to: '/admin/historico', label: 'Histórico', icon: 'historico', menu: 'historico' },
+  { to: '/admin/logs', label: 'Registros', icon: 'logs', menu: 'logs' },
+  { to: '/admin/configuracoes', label: 'Configurações', icon: 'config', menu: 'configuracoes' },
 ]
 
 const TITULOS: Record<string, string> = {
@@ -61,6 +62,7 @@ const TITULOS: Record<string, string> = {
 interface Notif { id: string; icon: string; texto: string; to: string }
 
 export function AdminShell() {
+  const { podeVer } = usePermissoes()
   const [menuAberto, setMenuAberto] = useState(false)
   const [notifsAbertas, setNotifsAbertas] = useState(false)
   const [notifs, setNotifs] = useState<Notif[]>([])
@@ -151,7 +153,7 @@ export function AdminShell() {
 
   const navLista = (
     <nav className="flex flex-col gap-1">
-      {NAV.map((item) => (
+      {NAV.filter((item) => podeVer(item.menu)).map((item) => (
         <NavLink key={item.to} to={item.to} end={item.end}
                  className={({ isActive }) => `side-item ${isActive ? 'is-active' : ''}`}>
           <Icon name={item.icon} />

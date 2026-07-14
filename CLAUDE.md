@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-14** — Banco de dados real (Supabase) com acesso por allowlist e senha padrao (9205e98)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (9cb47ba)
 - **2026-07-14** — Adiciona menu Galeria de fotos com filtros por polo, aula, ciclo e data (8a25832)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (418ca6d)
 - **2026-07-14** — Permissoes: aplicar na hora ao editar a propria conta e evitar auto-bloqueio (a47a04e)
-- **2026-07-14** — chore: update recent commits in CLAUDE.md (72e58b9)
 
 (Updated automatically by git post-commit hook)
 

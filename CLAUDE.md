@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-14** — Adiciona menu Galeria de fotos com filtros por polo, aula, ciclo e data (8a25832)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (418ca6d)
 - **2026-07-14** — Permissoes: aplicar na hora ao editar a propria conta e evitar auto-bloqueio (a47a04e)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (72e58b9)
 - **2026-07-14** — Cartoes de permissao de usuario recolhiveis em Configuracoes (c4d27a1)
-- **2026-07-14** — chore: update recent commits in CLAUDE.md (99be4c8)
 
 (Updated automatically by git post-commit hook)
 

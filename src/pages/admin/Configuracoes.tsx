@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase, MOCK } from '../../lib/supabase'
 import { Field, ConfirmModal, EmptyState } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { registrarLog } from '../../lib/logs'
@@ -106,6 +106,9 @@ export default function Configuracoes() {
     }
     setSalvandoEmail(email)
     const permissoes = permissoesIniciais()
+    // Ao restringir a própria conta, mantém Configurações editável (senão a
+    // proteção anti-bloqueio impediria salvar as demais permissões).
+    if (email === emailLogado) permissoes.configuracoes = 'editar'
     const { error } = await supabase
       .from('permissoes_usuarios').insert({ email, permissoes })
     setSalvandoEmail(null)
@@ -150,6 +153,13 @@ export default function Configuracoes() {
       acao: 'editar', entidade: 'usuario', entidadeId: u.email,
       descricao: `Alterou as permissões de "${u.email}" (${resumo}).`,
     })
+    // Se editou a própria conta, recarrega para aplicar na hora (as permissões
+    // são lidas no carregamento). Para outros usuários, vale no próximo acesso.
+    if (u.email === emailLogado) {
+      toast.success('Suas permissões foram atualizadas. Recarregando…')
+      setTimeout(() => window.location.reload(), 900)
+      return
+    }
     toast.success(`Permissões de "${u.email}" salvas.`)
   }
 
@@ -225,6 +235,19 @@ export default function Configuracoes() {
             total</strong>. O login dos usuários é criado no Supabase
             (Authentication → Users) — aqui você só controla as permissões.
           </p>
+          <p className="mt-2 text-xs text-[var(--c-text-soft)]">
+            As permissões passam a valer no <strong>próximo login</strong> do usuário
+            (ou ao recarregar a página dele) — não trocam a sessão que já está aberta.
+          </p>
+          {MOCK && (
+            <p className="mt-2 rounded-lg bg-[var(--c-amber-bg)] px-3 py-2 text-xs text-[var(--c-amber-fg)]">
+              🧪 <strong>Modo demonstração:</strong> os dados ficam no localStorage
+              <strong> deste navegador</strong>. Uma restrição criada aqui não vale
+              para quem entra em outro dispositivo/navegador — isso só é compartilhado
+              com o Supabase real. Para testar agora: saia e entre com o e-mail
+              restrito neste mesmo navegador.
+            </p>
+          )}
         </div>
 
         {!somenteLeitura && (

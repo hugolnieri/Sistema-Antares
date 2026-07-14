@@ -40,6 +40,22 @@ export default function Configuracoes() {
   const [novoEmail, setNovoEmail] = useState('')
   const [salvandoEmail, setSalvandoEmail] = useState<string | null>(null)
   const [usuarioRemover, setUsuarioRemover] = useState<PermissaoUsuario | null>(null)
+  // E-mails com o cartão de permissões expandido (recolhidos por padrão).
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+
+  const alternarExpandido = (email: string) =>
+    setExpandidos((s) => {
+      const n = new Set(s)
+      n.has(email) ? n.delete(email) : n.add(email)
+      return n
+    })
+
+  // Resumo dos níveis (para exibir quando o cartão está recolhido).
+  const resumoNiveis = (u: PermissaoUsuario) => {
+    const c = { editar: 0, ver: 0, nenhum: 0 }
+    for (const m of MENUS) c[(u.permissoes[m.key] ?? 'editar') as NivelPermissao]++
+    return c
+  }
 
   const carregar = useCallback(async () => {
     setLoadingContato(true)
@@ -99,6 +115,7 @@ export default function Configuracoes() {
       descricao: `Adicionou restrições de acesso para "${email}".`,
     })
     setUsuarios((us) => [...us, { email, permissoes }].sort((a, b) => a.email.localeCompare(b.email)))
+    setExpandidos((s) => new Set(s).add(email)) // já abre o novo para ajustar
     setNovoEmail('')
     toast.success(`Usuário "${email}" adicionado. Ajuste as permissões e salve.`)
   }
@@ -237,63 +254,84 @@ export default function Configuracoes() {
             message="Todos os usuários têm acesso total. Adicione um e-mail acima para restringir o que ele pode ver ou editar."
           />
         ) : (
-          <ul className="flex flex-col gap-4">
+          <ul className="flex flex-col gap-3">
             {usuarios.map((u) => {
               const salvandoEste = salvandoEmail === u.email
+              const aberto = expandidos.has(u.email)
+              const r = resumoNiveis(u)
               return (
-                <li key={u.email} className="rounded-lg border border-[var(--c-border)] p-4">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <p className="min-w-0 flex-1 truncate font-semibold">
+                <li key={u.email} className="rounded-lg border border-[var(--c-border)]">
+                  {/* Cabeçalho clicável: recolhe/expande as permissões do usuário */}
+                  <button
+                    className="flex w-full items-center gap-2 p-4 text-left"
+                    aria-expanded={aberto}
+                    onClick={() => alternarExpandido(u.email)}
+                  >
+                    <span className={`shrink-0 text-xs text-[var(--c-text-soft)] transition-transform ${aberto ? 'rotate-90' : ''}`}
+                          aria-hidden="true">▶</span>
+                    <span className="min-w-0 flex-1 truncate font-semibold">
                       {u.email}
                       {u.email === emailLogado && (
                         <span className="badge badge--blue ml-2 !text-[11px]">você</span>
                       )}
-                    </p>
-                    {!somenteLeitura && (
-                      <>
-                        <span className="text-xs text-[var(--c-text-soft)]">Aplicar a tudo:</span>
-                        {NIVEIS.map((n) => (
-                          <button key={n.valor}
-                                  className="badge badge--gray cursor-pointer !py-1 text-xs transition-opacity hover:opacity-75"
-                                  onClick={() => aplicarTodos(u.email, n.valor)}>
-                            {n.label}
-                          </button>
-                        ))}
-                      </>
+                    </span>
+                    {!aberto && (
+                      <span className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                        {r.editar > 0 && <span className="badge badge--green !py-0.5 !text-[11px]">{r.editar} editar</span>}
+                        {r.ver > 0 && <span className="badge badge--gray !py-0.5 !text-[11px]">{r.ver} ver</span>}
+                        {r.nenhum > 0 && <span className="badge badge--red !py-0.5 !text-[11px]">{r.nenhum} s/ acesso</span>}
+                      </span>
                     )}
-                  </div>
+                  </button>
 
-                  <fieldset disabled={somenteLeitura || salvandoEste} className="contents">
-                    <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-                      {MENUS.map((m) => (
-                        <label key={m.key} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm">
-                          <span className="font-medium">{m.label}</span>
-                          <select
-                            value={u.permissoes[m.key] ?? 'editar'}
-                            className="!w-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] !px-2 !py-1 text-xs"
-                            onChange={(e) => mudarNivel(u.email, m.key, e.target.value as NivelPermissao)}
-                          >
-                            {NIVEIS.map((n) => (
-                              <option key={n.valor} value={n.valor}>{n.label}</option>
-                            ))}
-                          </select>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
+                  {aberto && (
+                    <div className="flex flex-col gap-3 border-t border-[var(--c-border)] p-4">
+                      {!somenteLeitura && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-[var(--c-text-soft)]">Aplicar a tudo:</span>
+                          {NIVEIS.map((n) => (
+                            <button key={n.valor}
+                                    className="badge badge--gray cursor-pointer !py-1 text-xs transition-opacity hover:opacity-75"
+                                    onClick={() => aplicarTodos(u.email, n.valor)}>
+                              {n.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
-                  {!somenteLeitura && (
-                    <div className="mt-3 flex flex-wrap justify-end gap-2">
-                      <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
-                              disabled={salvandoEste}
-                              onClick={() => setUsuarioRemover(u)}>
-                        Remover restrições
-                      </button>
-                      <button className="btn btn-primary !py-1.5 text-sm"
-                              disabled={salvandoEste}
-                              onClick={() => salvarUsuario(u)}>
-                        {salvandoEste ? 'Salvando…' : 'Salvar permissões'}
-                      </button>
+                      <fieldset disabled={somenteLeitura || salvandoEste} className="contents">
+                        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                          {MENUS.map((m) => (
+                            <label key={m.key} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm">
+                              <span className="font-medium">{m.label}</span>
+                              <select
+                                value={u.permissoes[m.key] ?? 'editar'}
+                                className="!w-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] !px-2 !py-1 text-xs"
+                                onChange={(e) => mudarNivel(u.email, m.key, e.target.value as NivelPermissao)}
+                              >
+                                {NIVEIS.map((n) => (
+                                  <option key={n.valor} value={n.valor}>{n.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      {!somenteLeitura && (
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <button className="btn btn-ghost !py-1.5 text-sm text-[var(--c-danger)]"
+                                  disabled={salvandoEste}
+                                  onClick={() => setUsuarioRemover(u)}>
+                            Remover restrições
+                          </button>
+                          <button className="btn btn-primary !py-1.5 text-sm"
+                                  disabled={salvandoEste}
+                                  onClick={() => salvarUsuario(u)}>
+                            {salvandoEste ? 'Salvando…' : 'Salvar permissões'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </li>

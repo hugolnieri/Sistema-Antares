@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-14** — chore: update recent commits in CLAUDE.md (99be4c8)
 - **2026-07-14** — Corrige contraste dos selects no tema escuro (df56bc4)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (85e7fc9)
 - **2026-07-14** — Controle de acesso por usuario: permissoes por menu (editar/ver/nenhum) (af2d06a)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (299d55e)
-- **2026-07-14** — Menu Configuracoes com WhatsApp central para consultas de responsaveis (9157c78)
 
 (Updated automatically by git post-commit hook)
 

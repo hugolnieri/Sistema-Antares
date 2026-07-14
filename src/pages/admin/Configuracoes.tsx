@@ -270,7 +270,7 @@ export default function Configuracoes() {
                           <span className="font-medium">{m.label}</span>
                           <select
                             value={u.permissoes[m.key] ?? 'editar'}
-                            className="!w-auto !py-1 text-xs"
+                            className="!w-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] !px-2 !py-1 text-xs"
                             onChange={(e) => mudarNivel(u.email, m.key, e.target.value as NivelPermissao)}
                           >
                             {NIVEIS.map((n) => (

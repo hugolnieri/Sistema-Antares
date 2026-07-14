@@ -150,6 +150,13 @@ body {
 .field textarea[aria-invalid="true"] { border-color: var(--c-danger); }
 .field-error { color: var(--c-danger); font-size: 12px; }
 
+/* Selects e opções seguem o tema mesmo fora de .field (ex.: editor de
+   permissões em Configurações). No Windows/Chrome o popup de <option> usa a
+   cor de fundo do próprio <select>, então definimos as duas para garantir
+   contraste no tema escuro (senão o menu abre branco com texto claro). */
+select { color: var(--c-text); background-color: var(--c-surface); }
+select option { color: var(--c-text); background-color: var(--c-surface); }
+
 /* ============ TABELA DE DADOS ============ */
 .data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .data-table th {

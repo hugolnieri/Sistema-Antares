@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-13** — chore: update recent commits in CLAUDE.md (28e87fd)
 - **2026-07-13** — Exclusoes, logs de auditoria, multiplos lembretes e recomendar aluno na chamada (a4d9dfa)
 - **2026-07-10** — Lembrete de relatorio acima do lembrete opcional + sugestoes de data (0810bbf)
 - **2026-07-10** — Adiciona relatorio da aula em Materiais e lembrete de envio no WhatsApp (5335930)
 - **2026-07-08** — chore: update recent commits in CLAUDE.md (c9b5c08)
-- **2026-07-08** — Unifica status de professor em Ativo/Inativo, remove Disponivel/Ocupado (633a6b8)
 
 (Updated automatically by git post-commit hook)
 

@@ -204,7 +204,7 @@ async function acaoDados(token: string) {
   const polo = await requirePolo(token);
   if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
 
-  const [alunosRes, materiaisRes, historicoRes] = await Promise.all([
+  const [alunosRes, materiaisRes, historicoRes, configRes] = await Promise.all([
     supabase
       .from("alunos")
       .select("id, nome, contato, observacoes")
@@ -219,6 +219,11 @@ async function acaoDados(token: string) {
       .from("historico_aulas")
       .select("id, numero_aula, fotos_aula(id)")
       .eq("polo_id", polo.id).eq("ciclo", polo.ciclo_atual),
+    // WhatsApp central do colégio (Configurações do admin) — destino das
+    // consultas de responsáveis. O contato do polo é apenas informativo.
+    supabase
+      .from("configuracoes").select("valor")
+      .eq("chave", "contato_antares").maybeSingle(),
   ]);
   const chamadas = (historicoRes.data ?? []).map((h: any) => ({
     numeroAula: h.numero_aula,
@@ -248,6 +253,7 @@ async function acaoDados(token: string) {
 
   return json({
     polo: { id: polo.id, nome: polo.nome, contato: polo.contato, ciclo: polo.ciclo_atual },
+    contatoAntares: configRes.data?.valor ?? null,
     alunos, materiais, chamadas,
   });
 }

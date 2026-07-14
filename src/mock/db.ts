@@ -17,6 +17,7 @@ export interface MockDB {
   alunos_sugeridos: any[]
   solicitacoes_contato: any[]
   logs: any[]
+  configuracoes: any[]
 }
 
 const KEY = 'antares-mock-db'
@@ -146,6 +147,10 @@ function seed(): MockDB {
       { id: uuid(), ator: 'Professor · Jardim Santa Maria', ator_tipo: 'professor', acao: 'login', entidade: 'sessao', entidade_id: p1, descricao: 'Professor acessou o polo "Jardim Santa Maria".', created_at: diasAtras(2) },
       { id: uuid(), ator: 'Professor · Jardim Santa Maria', ator_tipo: 'professor', acao: 'chamada', entidade: 'chamada', entidade_id: h1, descricao: 'Registrou a chamada da Aula 3 (Ciclo 1).', created_at: diasAtras(2) },
     ],
+    configuracoes: [
+      // WhatsApp do responsável do colégio Antares — recebe as consultas dos professores.
+      { chave: 'contato_antares', valor: '(11) 98888-0000' },
+    ],
   }
 }
 
@@ -158,6 +163,7 @@ export function loadDB(): MockDB {
       if (!db.alunos_sugeridos) db.alunos_sugeridos = []
       if (!db.solicitacoes_contato) db.solicitacoes_contato = []
       if (!db.logs) db.logs = []
+      if (!db.configuracoes) db.configuracoes = []
       for (const s of db.solicitacoes_contato) if (s.motivo === undefined) s.motivo = null
       delete (db as any).eventos
       for (const c of db.cronograma) {

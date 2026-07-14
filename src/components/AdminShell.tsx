@@ -42,6 +42,7 @@ const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: '/admin/materiais', label: 'Materiais', icon: 'materiais' },
   { to: '/admin/historico', label: 'Histórico', icon: 'historico' },
   { to: '/admin/logs', label: 'Registros', icon: 'logs' },
+  { to: '/admin/configuracoes', label: 'Configurações', icon: 'config' },
 ]
 
 const TITULOS: Record<string, string> = {
@@ -54,6 +55,7 @@ const TITULOS: Record<string, string> = {
   '/admin/materiais': 'Materiais didáticos',
   '/admin/historico': 'Histórico de aulas',
   '/admin/logs': 'Registros de atividade',
+  '/admin/configuracoes': 'Configurações',
 }
 
 interface Notif { id: string; icon: string; texto: string; to: string }

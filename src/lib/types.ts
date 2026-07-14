@@ -208,7 +208,17 @@ export interface ChamadaExistente {
 
 export interface DadosPolo {
   polo: { id: string; nome: string; contato: string | null; ciclo: number }
+  // WhatsApp do responsável do colégio Antares (Configurações do admin).
+  // É este número que recebe as consultas de responsáveis feitas pelo
+  // professor — o contato do polo acima é apenas informativo.
+  contatoAntares: string | null
   alunos: AlunoChamada[]
   materiais: MaterialChamada[]
   chamadas: ChamadaExistente[]
+}
+
+// Configuração geral do sistema (chave/valor) — editada em /admin/configuracoes.
+export interface Configuracao {
+  chave: string
+  valor: string | null
 }

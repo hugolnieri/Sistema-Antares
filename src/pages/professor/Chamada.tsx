@@ -46,9 +46,9 @@ export default function Chamada() {
 
   const chamadaIniciada = historicoId !== null
 
-  // Mensagem automática para o contato DO POLO — pede o nome e telefone do
-  // responsável pelo aluno (o professor não tem mais acesso direto), já
-  // incluindo o motivo informado no popup.
+  // Mensagem automática para o WhatsApp DO COLÉGIO ANTARES (número definido
+  // em Configurações no admin; o contato do polo é apenas informativo) —
+  // pede o nome e telefone do responsável pelo aluno, já com o motivo.
   const mensagemConsultaResponsavel = (nomeAluno: string, motivo: string) =>
     `Olá! Sou professor(a) no polo ${dados.polo.nome}. Preciso do nome e ` +
     `telefone do responsável pelo aluno(a) *${nomeAluno}* para contato.\n` +
@@ -69,8 +69,8 @@ export default function Chamada() {
       toast.error('Informe o motivo da consulta.')
       return
     }
-    if (dados.polo.contato) {
-      window.open(linkWhatsApp(dados.polo.contato, mensagemConsultaResponsavel(consultaAluno.nome, motivo)), '_blank')
+    if (dados.contatoAntares) {
+      window.open(linkWhatsApp(dados.contatoAntares, mensagemConsultaResponsavel(consultaAluno.nome, motivo)), '_blank')
     }
     setEnviandoConsulta(true)
     poloApi.solicitarContato(token, consultaAluno.id, consultaAluno.nome, motivo)
@@ -393,7 +393,7 @@ export default function Chamada() {
                             <p className="mt-0.5 text-xs text-[var(--c-amber-fg)]">⚠️ {a.observacoes}</p>
                           )}
                         </div>
-                        {dados.polo.contato && (
+                        {dados.contatoAntares && (
                           <button
                             onClick={() => abrirConsultaResponsaveis(a.id, a.nome)}
                             className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"

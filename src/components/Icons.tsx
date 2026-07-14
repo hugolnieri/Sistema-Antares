@@ -12,7 +12,7 @@ const svg = (children: ReactNode, size: number) => (
 
 export type IconName =
   | 'dashboard' | 'polos' | 'professores' | 'alunos' | 'responsaveis'
-  | 'cronograma' | 'materiais' | 'historico' | 'logs'
+  | 'cronograma' | 'materiais' | 'historico' | 'logs' | 'config'
   | 'sino' | 'sair' | 'menu' | 'sol' | 'lua'
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
@@ -68,6 +68,11 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
       return svg(<>
         <rect x="4" y="3.5" width="16" height="17" rx="2" />
         <path d="M8 8h8M8 12h8M8 16h5" />
+      </>, size)
+    case 'config':
+      return svg(<>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 1 1-4 0v-.09a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 1 1 0-4h.09a1.6 1.6 0 0 0 1.47-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06A2 2 0 1 1 7.01 4.5l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 .97-1.47V3a2 2 0 1 1 4 0v.09a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47.97H21a2 2 0 1 1 0 4h-.09a1.6 1.6 0 0 0-1.47.97Z" />
       </>, size)
     case 'sino':
       return svg(<>

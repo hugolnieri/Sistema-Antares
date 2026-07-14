@@ -120,8 +120,13 @@ export const mockPoloApi = {
         historicoId: h.id,
         temFotos: db.fotos_aula.some((f) => f.historico_id === h.id),
       }))
+    // WhatsApp central do colégio (Configurações) — destino das consultas de
+    // responsáveis. O contato do polo é apenas informativo.
+    const contatoAntares =
+      db.configuracoes.find((c) => c.chave === 'contato_antares')?.valor ?? null
     return {
       polo: { id: polo.id, nome: polo.nome, contato: polo.contato ?? null, ciclo: polo.ciclo_atual },
+      contatoAntares,
       alunos, materiais, chamadas,
     }
   },

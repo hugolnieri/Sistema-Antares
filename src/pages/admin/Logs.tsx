@@ -22,10 +22,11 @@ const ACAO: Record<string, { label: string; badge: string }> = {
 }
 const acaoDe = (a: string) => ACAO[a] ?? { label: a, badge: 'badge--gray' }
 
-const ENTIDADES = ['polo', 'professor', 'aluno', 'responsavel', 'material', 'cronograma', 'chamada', 'sessao']
+const ENTIDADES = ['polo', 'professor', 'aluno', 'responsavel', 'material', 'cronograma', 'chamada', 'sessao', 'configuracao']
 const ENTIDADE_LABEL: Record<string, string> = {
   polo: 'Polo', professor: 'Professor', aluno: 'Aluno', responsavel: 'Responsável',
   material: 'Material', cronograma: 'Cronograma', chamada: 'Chamada', sessao: 'Sessão',
+  configuracao: 'Configuração',
 }
 
 export default function Logs() {

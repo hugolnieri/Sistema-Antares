@@ -180,6 +180,15 @@ create table if not exists logs (
 );
 create index if not exists idx_logs_created on logs(created_at desc);
 
+-- Configurações gerais do sistema (chave/valor) — tela /admin/configuracoes.
+-- 'contato_antares' = WhatsApp do responsável do colégio Antares, destino das
+-- consultas de responsáveis feitas pelos professores na chamada.
+create table if not exists configuracoes (
+  chave      text primary key,
+  valor      text,
+  created_at timestamptz not null default now()
+);
+
 -- Fotos: o banco guarda só metadados. Arquivo fica no Storage
 -- (e futuramente no SharePoint — use url_externa para isso).
 create table if not exists fotos_aula (
@@ -210,7 +219,8 @@ declare t text;
 begin
   foreach t in array array['polos','professores','professor_polos','alunos','responsaveis',
                            'aluno_responsaveis','materiais','cronograma','historico_aulas',
-                           'presencas','fotos_aula','alunos_sugeridos','solicitacoes_contato','logs']
+                           'presencas','fotos_aula','alunos_sugeridos','solicitacoes_contato','logs',
+                           'configuracoes']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists admin_all on %I', t);

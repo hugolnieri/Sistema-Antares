@@ -469,6 +469,10 @@ export default function Polos() {
             <input value={form.contato}
                    onChange={(e) => setForm((f) => ({ ...f, contato: e.target.value }))} />
           </Field>
+          <p className="-mt-2 text-xs text-[var(--c-text-soft)]">
+            Apenas informativo. As consultas de responsáveis feitas pelos professores
+            vão para o número do colégio definido em <strong>Configurações</strong>.
+          </p>
           <Field label="PIX do polo">
             <input value={form.pix}
                    onChange={(e) => setForm((f) => ({ ...f, pix: e.target.value }))} />

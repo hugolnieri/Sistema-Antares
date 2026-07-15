@@ -59,7 +59,10 @@ export default function Polos() {
     setErro(null)
     const { data, error } = await supabase
       .from('polos')
-      .select('id, nome, slug, cep, logradouro, numero, complemento, bairro, cidade, estado, responsavel, contato, pix, observacoes, latitude, longitude, token_version, ciclo_atual, status, created_at')
+      // token_version é segredo do servidor (usado só na Edge Function para
+      // assinar o token do professor). O papel `authenticated` não tem SELECT
+      // nessa coluna — pedi-la aqui fazia a query inteira falhar. A UI não a usa.
+      .select('id, nome, slug, cep, logradouro, numero, complemento, bairro, cidade, estado, responsavel, contato, pix, observacoes, latitude, longitude, ciclo_atual, status, created_at')
       .order('nome')
     if (error) setErro('Não foi possível carregar os polos.')
     else setPolos((data ?? []) as Polo[])

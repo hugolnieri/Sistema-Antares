@@ -99,6 +99,19 @@ export interface LembreteCronograma {
   texto: string
 }
 
+// Um professor responsável por uma aula agendada, com o status da confirmação
+// de presença. Cada linha tem um token único que gera o link enviado no WhatsApp.
+export interface CronogramaProfessor {
+  id: string
+  cronograma_id: string
+  professor_id: string | null
+  professor_nome: string       // snapshot — sobrevive à exclusão do professor
+  token: string
+  status: 'pendente' | 'confirmado' | 'recusado'
+  respondido_em: string | null
+  professores?: { nome: string; contato: string | null } | null
+}
+
 export interface CronogramaItem {
   id: string
   polo_id: string
@@ -115,6 +128,17 @@ export interface CronogramaItem {
   created_at: string
   polos?: { nome: string } | null
   professores?: { nome: string } | null
+  // Professores responsáveis + confirmação de presença (fonte da verdade da lista).
+  cronograma_professores?: CronogramaProfessor[]
+}
+
+// Resposta das RPCs info_confirmacao / responder_confirmacao (tela pública).
+export interface InfoConfirmacao {
+  professor_nome: string
+  numero_aula: number
+  data: string
+  polo_nome: string
+  status: 'pendente' | 'confirmado' | 'recusado'
 }
 
 // Registro de auditoria: o que cada usuário fez no sistema.

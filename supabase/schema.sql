@@ -107,6 +107,23 @@ update cronograma
  where lembrete_dias_antes is not null
    and (lembretes is null or lembretes = '[]'::jsonb);
 
+-- Professores responsáveis de uma aula agendada + confirmação de presença.
+-- Uma aula pode ter vários professores; cada um recebe um link único
+-- (token) para confirmar ou recusar presença. O nome é gravado como
+-- snapshot para sobreviver à exclusão do professor.
+create table if not exists cronograma_professores (
+  id             uuid primary key default gen_random_uuid(),
+  cronograma_id  uuid not null references cronograma(id) on delete cascade,
+  professor_id   uuid references professores(id) on delete set null,
+  professor_nome text not null,
+  token          text not null unique
+                 default (replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '')),
+  status         text not null default 'pendente' check (status in ('pendente','confirmado','recusado')),
+  respondido_em  timestamptz,
+  created_at     timestamptz not null default now()
+);
+create index if not exists idx_cronograma_professores_cronograma on cronograma_professores(cronograma_id);
+
 create table if not exists historico_aulas (
   id                uuid primary key default gen_random_uuid(),
   polo_id           uuid not null references polos(id) on delete cascade,
@@ -351,6 +368,7 @@ begin
     ['responsaveis','responsaveis'],
     ['materiais','materiais'],
     ['cronograma','cronograma'],
+    ['cronograma_professores','cronograma'],
     ['historico_aulas','historico'],
     ['presencas','historico'],
     ['fotos_aula','historico'],
@@ -447,6 +465,47 @@ $$;
 
 revoke execute on function verify_polo_password(text, text) from public, anon, authenticated;
 grant  execute on function verify_polo_password(text, text) to service_role;
+
+-- ------------------------------------------------------------
+-- CONFIRMAÇÃO DE PRESENÇA DO PROFESSOR (link público)
+-- ------------------------------------------------------------
+
+-- Grant explícito (defensivo): o admin precisa ler o token para montar o
+-- link do WhatsApp. Diferente de polos, aqui não há coluna sensível a esconder.
+grant select, insert, update, delete on cronograma_professores to authenticated;
+
+-- Detalhes exibidos na tela pública de confirmação. Não expõe nada sensível
+-- (só nome do professor, aula, data e polo). Chamada pelo papel anon.
+create or replace function info_confirmacao(p_token text)
+returns table (professor_nome text, numero_aula int, data date, polo_nome text, status text)
+language sql stable security definer set search_path = public as $$
+  select cp.professor_nome, c.numero_aula, c.data, pl.nome, cp.status
+    from cronograma_professores cp
+    join cronograma c  on c.id  = cp.cronograma_id
+    join polos      pl on pl.id = c.polo_id
+   where cp.token = p_token;
+$$;
+
+revoke execute on function info_confirmacao(text) from public;
+grant  execute on function info_confirmacao(text) to anon, authenticated;
+
+-- Registra a resposta do professor (confirmado/recusado) a partir do token.
+-- Retorna o mesmo shape de info_confirmacao (0 linhas se o token não existir).
+create or replace function responder_confirmacao(p_token text, p_status text)
+returns table (professor_nome text, numero_aula int, data date, polo_nome text, status text)
+language plpgsql security definer set search_path = public as $$
+begin
+  if p_status not in ('confirmado', 'recusado') then
+    raise exception 'Status inválido';
+  end if;
+  update cronograma_professores
+     set status = p_status, respondido_em = now()
+   where token = p_token;
+  return query select * from info_confirmacao(p_token);
+end $$;
+
+revoke execute on function responder_confirmacao(text, text) from public;
+grant  execute on function responder_confirmacao(text, text) to anon, authenticated;
 
 -- ------------------------------------------------------------
 -- STORAGE: buckets privados (acesso via URLs assinadas)

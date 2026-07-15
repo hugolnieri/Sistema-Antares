@@ -22,6 +22,7 @@ import PoloLogin from './pages/professor/PoloLogin'
 import PoloLayout from './pages/professor/PoloLayout'
 import Chamada from './pages/professor/Chamada'
 import MateriaisProfessor from './pages/professor/MateriaisProfessor'
+import ConfirmarPresenca from './pages/professor/ConfirmarPresenca'
 
 export default function App() {
   return (
@@ -53,6 +54,9 @@ export default function App() {
             <Route path="logs" element={<RequireMenu menu="logs"><Logs /></RequireMenu>} />
             <Route path="configuracoes" element={<RequireMenu menu="configuracoes"><Configuracoes /></RequireMenu>} />
           </Route>
+
+          {/* Confirmação de presença do professor (link público enviado no WhatsApp) */}
+          <Route path="/confirmar/:token" element={<ConfirmarPresenca />} />
 
           {/* Área do professor (link direto do polo) */}
           <Route path="/professor/polo/:slug" element={<PoloLogin />} />

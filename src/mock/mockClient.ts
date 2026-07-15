@@ -15,6 +15,12 @@ const nomeDe = (arr: any[], id: string | null) => {
   return x ? { nome: x.nome } : null
 }
 
+// Professor com nome + contato (usado na confirmação de presença).
+const profNomeContato = (professores: any[], id: string | null) => {
+  const x = professores.find((a) => a.id === id)
+  return x ? { nome: x.nome, contato: x.contato ?? null } : null
+}
+
 function embed(db: MockDB, table: string, row: any, sel: string): any {
   const r = { ...row }
   if (table === 'polos') delete r.senha // nunca expor a senha, nem no mock
@@ -57,6 +63,31 @@ function embed(db: MockDB, table: string, row: any, sel: string): any {
   if (table === 'cronograma') {
     if (sel.includes('polos(')) r.polos = nomeDe(db.polos, row.polo_id)
     if (sel.includes('professores(')) r.professores = nomeDe(db.professores, row.professor_id)
+    if (sel.includes('cronograma_professores(')) {
+      r.cronograma_professores = db.cronograma_professores
+        .filter((cp) => cp.cronograma_id === row.id)
+        .map((cp) => ({
+          id: cp.id, cronograma_id: cp.cronograma_id, professor_id: cp.professor_id,
+          professor_nome: cp.professor_nome, token: cp.token, status: cp.status,
+          respondido_em: cp.respondido_em,
+          ...(sel.includes('professores(')
+            ? { professores: profNomeContato(db.professores, cp.professor_id) }
+            : {}),
+        }))
+    }
+  }
+
+  if (table === 'cronograma_professores') {
+    if (sel.includes('professores(')) r.professores = profNomeContato(db.professores, row.professor_id)
+    if (sel.includes('cronograma(')) {
+      const c = db.cronograma.find((x) => x.id === row.cronograma_id)
+      r.cronograma = c
+        ? {
+            numero_aula: c.numero_aula,
+            ...(sel.includes('polos(') ? { polos: nomeDe(db.polos, c.polo_id) } : {}),
+          }
+        : null
+    }
   }
 
   if (table === 'historico_aulas') {
@@ -124,6 +155,8 @@ function cascadeDelete(db: MockDB, table: keyof MockDB, excluidos: any[]) {
   if (table === 'polos') {
     db.professor_polos = db.professor_polos.filter((pp) => !ids.has(pp.polo_id))
     for (const a of db.alunos) if (ids.has(a.polo_id)) a.polo_id = null // on delete set null
+    const cronoIds = new Set(db.cronograma.filter((c) => ids.has(c.polo_id)).map((c) => c.id))
+    db.cronograma_professores = db.cronograma_professores.filter((cp) => !cronoIds.has(cp.cronograma_id))
     db.cronograma = db.cronograma.filter((c) => !ids.has(c.polo_id))
     const histIds = new Set(
       db.historico_aulas.filter((h) => ids.has(h.polo_id)).map((h) => h.id),
@@ -138,7 +171,13 @@ function cascadeDelete(db: MockDB, table: keyof MockDB, excluidos: any[]) {
   if (table === 'professores') {
     db.professor_polos = db.professor_polos.filter((pp) => !ids.has(pp.professor_id))
     for (const c of db.cronograma) if (ids.has(c.professor_id)) c.professor_id = null
+    // cronograma_professores guarda professor_nome como snapshot -> só desvincula.
+    for (const cp of db.cronograma_professores) if (ids.has(cp.professor_id)) cp.professor_id = null
     // historico_aulas guarda o nome do professor como texto -> preservado.
+  }
+
+  if (table === 'cronograma') {
+    db.cronograma_professores = db.cronograma_professores.filter((cp) => !ids.has(cp.cronograma_id))
   }
 
   if (table === 'alunos') {
@@ -155,7 +194,7 @@ function cascadeDelete(db: MockDB, table: keyof MockDB, excluidos: any[]) {
 
 /* ---------------- Query builder ---------------- */
 
-type Filtro = { op: 'eq' | 'gte' | 'lte'; col: string; val: any }
+type Filtro = { op: 'eq' | 'gte' | 'lte' | 'in'; col: string; val: any }
 type Modo = 'select' | 'insert' | 'update' | 'delete'
 
 class MockQuery implements PromiseLike<any> {
@@ -178,6 +217,7 @@ class MockQuery implements PromiseLike<any> {
   eq(col: string, val: any) { this.filtros.push({ op: 'eq', col, val }); return this }
   gte(col: string, val: any) { this.filtros.push({ op: 'gte', col, val }); return this }
   lte(col: string, val: any) { this.filtros.push({ op: 'lte', col, val }); return this }
+  in(col: string, val: any[]) { this.filtros.push({ op: 'in', col, val }); return this }
   order(col: string, opts?: { ascending?: boolean }) {
     this.ordem = { col, asc: opts?.ascending !== false }; return this
   }
@@ -198,6 +238,7 @@ class MockQuery implements PromiseLike<any> {
     return rows.filter((r) =>
       this.filtros.every((f) => {
         if (f.op === 'eq') return r[f.col] === f.val
+        if (f.op === 'in') return (f.val as any[]).includes(r[f.col])
         if (f.op === 'gte') return String(r[f.col] ?? '') >= String(f.val)
         return String(r[f.col] ?? '') <= String(f.val) // lte
       }))
@@ -218,6 +259,13 @@ class MockQuery implements PromiseLike<any> {
           l.senha = l.senha ?? null
         }
       }
+      if (this.table === 'cronograma_professores') {
+        for (const l of linhas) {
+          l.token = l.token ?? (uuid() + uuid()).replace(/-/g, '') // igual ao default do banco
+          l.status = l.status ?? 'pendente'
+          l.respondido_em = l.respondido_em ?? null
+        }
+      }
       tabela.push(...linhas)
       saveDB(db)
       return { data: this.unico ? linhas[0] : linhas, error: null }
@@ -233,6 +281,10 @@ class MockQuery implements PromiseLike<any> {
       }
       for (const r of alvo) Object.assign(r, this.payload)
       saveDB(db)
+      // .update().select().single() -> devolve a linha atualizada (igual ao real).
+      if (this.unico) {
+        return { data: alvo[0] ? embed(db, this.table, alvo[0], this.sel) : null, error: null }
+      }
       return { data: null, error: null }
     }
 
@@ -380,6 +432,32 @@ async function rpc(nome: string, params: any) {
       data: { permitido: !!email, master: false, permissoes: row?.permissoes ?? null },
       error: null,
     }
+  }
+  // Confirmação de presença do professor (link público). Espelha as RPCs
+  // info_confirmacao / responder_confirmacao do banco (retornam uma "tabela").
+  if (nome === 'info_confirmacao' || nome === 'responder_confirmacao') {
+    const infoDe = (cp: any) => {
+      const c = db.cronograma.find((x) => x.id === cp.cronograma_id)
+      const pl = c ? db.polos.find((x) => x.id === c.polo_id) : null
+      return {
+        professor_nome: cp.professor_nome,
+        numero_aula: c?.numero_aula ?? null,
+        data: c?.data ?? null,
+        polo_nome: pl?.nome ?? '',
+        status: cp.status,
+      }
+    }
+    if (nome === 'responder_confirmacao' && !['confirmado', 'recusado'].includes(params.p_status)) {
+      return { data: null, error: { message: 'Status inválido' } }
+    }
+    const cp = db.cronograma_professores.find((x) => x.token === params.p_token)
+    if (!cp) return { data: [], error: null } // token inexistente -> "tabela" vazia
+    if (nome === 'responder_confirmacao') {
+      cp.status = params.p_status
+      cp.respondido_em = new Date().toISOString()
+      saveDB(db)
+    }
+    return { data: [infoDe(cp)], error: null }
   }
   if (nome === 'set_polo_password') {
     const polo = db.polos.find((p) => p.id === params.p_polo_id)

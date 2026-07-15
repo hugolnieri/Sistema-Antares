@@ -117,6 +117,7 @@ export function AdminShell() {
     const hoje = new Date().toLocaleDateString('en-CA')
     const em3 = new Date(Date.now() + 3 * 86400000).toLocaleDateString('en-CA')
     const em30 = new Date(Date.now() + 30 * 86400000).toLocaleDateString('en-CA')
+    const seteDiasAtras = new Date(Date.now() - 7 * 86400000).toISOString()
     Promise.all([
       supabase.from('alunos_sugeridos').select('id', { count: 'exact', head: true }).eq('status', 'pendente'),
       // Janela ampla de aulas futuras: um lembrete pode cair nos próximos dias
@@ -128,8 +129,23 @@ export function AdminShell() {
       supabase.from('solicitacoes_contato')
         .select('id, aluno_nome, polos(nome)')
         .eq('status', 'pendente').order('created_at', { ascending: false }),
-    ]).then(([sug, cr, sol]) => {
+      // Professores que confirmaram/recusaram presença nos últimos 7 dias.
+      supabase.from('cronograma_professores')
+        .select('id, professor_nome, status, respondido_em, cronograma(numero_aula, polos(nome))')
+        .in('status', ['confirmado', 'recusado'])
+        .gte('respondido_em', seteDiasAtras)
+        .order('respondido_em', { ascending: false }),
+    ]).then(([sug, cr, sol, conf]) => {
       const lista: Notif[] = []
+      for (const p of (conf.data ?? []) as any[]) {
+        const confirmou = p.status === 'confirmado'
+        lista.push({
+          id: `conf-${p.id}`, icon: confirmou ? '✅' : '⚠️',
+          texto: `${p.professor_nome} ${confirmou ? 'confirmou' : 'não poderá ir'}` +
+            ` · Aula ${p.cronograma?.numero_aula ?? ''} · ${p.cronograma?.polos?.nome ?? ''}`,
+          to: '/admin/cronograma',
+        })
+      }
       for (const s of (sol.data ?? []) as any[]) {
         lista.push({
           id: `sol-${s.id}`, icon: '📇',

@@ -5,17 +5,24 @@ import { DataTable, type Column } from '../../components/DataTable'
 import { CalendarMonth, type CalendarItem } from '../../components/CalendarMonth'
 import { Drawer, Field, ConfirmModal, Modal, StatusBadge } from '../../components/ui'
 import { useToast } from '../../components/Toast'
-import { fmtData, subtrairDias, adicionarDias, hojeISO, proximaSegunda, linkWhatsAppTexto } from '../../lib/format'
+import { fmtData, subtrairDias, adicionarDias, hojeISO, proximaSegunda, linkWhatsAppTexto, linkWhatsApp } from '../../lib/format'
 import { statusDe } from '../../lib/status'
 import { registrarLog } from '../../lib/logs'
 import { usePermissoes } from '../../lib/permissoes'
-import type { CronogramaItem, HistoricoAula, LembreteCronograma, Material, Polo, Professor } from '../../lib/types'
+import type { CronogramaItem, CronogramaProfessor, HistoricoAula, LembreteCronograma, Material, Polo, Professor } from '../../lib/types'
 
 const AULA_VAZIA = {
-  polo_id: '', numero_aula: 1, data: '', professor_id: '', observacoes: '',
+  polo_id: '', numero_aula: 1, data: '', professores_ids: [] as string[], observacoes: '',
   status: 'agendada' as CronogramaItem['status'],
   lembretes: [] as LembreteCronograma[],
   relatorio_lembrete: false, relatorio_lembrete_data: '',
+}
+
+// Rótulo/estilo do status de confirmação de presença de um professor.
+const STATUS_CONFIRMACAO: Record<CronogramaProfessor['status'], { label: string; badge: string }> = {
+  pendente:   { label: '⏳ Pendente',    badge: 'badge--gray' },
+  confirmado: { label: '✓ Confirmou',    badge: 'badge--green' },
+  recusado:   { label: '✗ Não vai',      badge: 'badge--red' },
 }
 
 const OPCOES_LEMBRETE = [1, 2, 3, 5, 7, 10, 14]
@@ -33,7 +40,7 @@ export default function Cronograma() {
   const [itens, setItens] = useState<CronogramaItem[]>([])
   const [historico, setHistorico] = useState<HistoricoAula[]>([])
   const [polos, setPolos] = useState<Pick<Polo, 'id' | 'nome'>[]>([])
-  const [professores, setProfessores] = useState<Pick<Professor, 'id' | 'nome'>[]>([])
+  const [professores, setProfessores] = useState<Pick<Professor, 'id' | 'nome' | 'contato'>[]>([])
   const [materiais, setMateriais] = useState<Pick<Material, 'numero_aula' | 'titulo' | 'relatorio'>[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -58,18 +65,23 @@ export default function Cronograma() {
   const [enviarAula, setEnviarAula] = useState<CronogramaItem | null>(null)
   const [msgRelatorio, setMsgRelatorio] = useState('')
 
+  // Modal "confirmar presença dos professores" (popup pós-agendamento)
+  const [confirmModal, setConfirmModal] = useState<
+    { titulo: string; subtitulo: string; profs: CronogramaProfessor[] } | null
+  >(null)
+
   const carregar = useCallback(async () => {
     setLoading(true)
     setErro(null)
     const [itensRes, histRes, polosRes, profRes, matRes] = await Promise.all([
       supabase.from('cronograma')
-        .select('*, polos(nome), professores(nome)')
+        .select('*, polos(nome), professores(nome), cronograma_professores(id, cronograma_id, professor_id, professor_nome, token, status, respondido_em, professores(nome, contato))')
         .order('data', { ascending: true }),
       supabase.from('historico_aulas')
         .select('id, polo_id, numero_aula, professor_nome, data_hora, polos(nome)')
         .order('data_hora', { ascending: false }),
       supabase.from('polos').select('id, nome').eq('status', 'ativo').order('nome'),
-      supabase.from('professores').select('id, nome').eq('status', 'ativo').order('nome'),
+      supabase.from('professores').select('id, nome, contato').eq('status', 'ativo').order('nome'),
       supabase.from('materiais').select('numero_aula, titulo, relatorio').order('numero_aula'),
     ])
     if (itensRes.error) setErro('Não foi possível carregar o cronograma.')
@@ -78,7 +90,7 @@ export default function Cronograma() {
       setHistorico((histRes.data ?? []) as unknown as HistoricoAula[])
     }
     setPolos((polosRes.data ?? []) as Pick<Polo, 'id' | 'nome'>[])
-    setProfessores((profRes.data ?? []) as Pick<Professor, 'id' | 'nome'>[])
+    setProfessores((profRes.data ?? []) as Pick<Professor, 'id' | 'nome' | 'contato'>[])
     setMateriais((matRes.data ?? []) as Pick<Material, 'numero_aula' | 'titulo' | 'relatorio'>[])
     setLoading(false)
   }, [])
@@ -98,9 +110,15 @@ export default function Cronograma() {
       : c.lembrete_dias_antes != null
         ? [{ dias_antes: c.lembrete_dias_antes, texto: c.lembrete_texto ?? '' }]
         : []
+    // Lista de professores responsáveis: fonte da verdade é cronograma_professores.
+    // Fallback para dados legados que só tinham professor_id na própria aula.
+    const professores_ids = (c.cronograma_professores ?? [])
+      .map((cp) => cp.professor_id)
+      .filter((id): id is string => !!id)
+    if (!professores_ids.length && c.professor_id) professores_ids.push(c.professor_id)
     setAula({
       polo_id: c.polo_id, numero_aula: c.numero_aula, data: c.data,
-      professor_id: c.professor_id ?? '', observacoes: c.observacoes ?? '', status: c.status,
+      professores_ids, observacoes: c.observacoes ?? '', status: c.status,
       lembretes,
       relatorio_lembrete: !!c.relatorio_lembrete_data,
       relatorio_lembrete_data: c.relatorio_lembrete_data ?? '',
@@ -118,6 +136,30 @@ export default function Cronograma() {
     }))
   const removerLembrete = (i: number) =>
     setAula((f) => ({ ...f, lembretes: f.lembretes.filter((_, j) => j !== i) }))
+
+  // Lista de professores responsáveis do formulário (sem duplicar).
+  const adicionarProfessor = (id: string) => {
+    if (!id) return
+    setAula((f) => (f.professores_ids.includes(id)
+      ? f : { ...f, professores_ids: [...f.professores_ids, id] }))
+  }
+  const removerProfessor = (id: string) =>
+    setAula((f) => ({ ...f, professores_ids: f.professores_ids.filter((x) => x !== id) }))
+
+  // Abre o popup de confirmação de presença com a lista de professores da aula.
+  const abrirConfirmacao = (c: CronogramaItem, profs: CronogramaProfessor[]) => {
+    if (!profs.length) return
+    setConfirmModal({
+      titulo: `Aula ${c.numero_aula} · ${c.polos?.nome ?? ''}`,
+      subtitulo: fmtData(c.data),
+      profs,
+    })
+  }
+
+  // Mensagem do WhatsApp com o link único de confirmação do professor.
+  const msgConfirmacao = (titulo: string, subtitulo: string, prof: CronogramaProfessor) =>
+    `Olá, ${prof.professor_nome}! 👋\nVocê é responsável pela ${titulo} em ${subtitulo}.\n\n` +
+    `Confirme sua presença neste link:\n${window.location.origin}/confirmar/${prof.token}`
 
   // Abre o modal de envio do relatório da aula no WhatsApp, com a mensagem
   // pré-preenchida a partir do relatório salvo no material daquela aula.
@@ -145,25 +187,62 @@ export default function Cronograma() {
       .map((l) => ({ dias_antes: Number(l.dias_antes), texto: l.texto.trim() }))
     const payload = {
       polo_id: aula.polo_id, numero_aula: aula.numero_aula, data: aula.data,
-      professor_id: aula.professor_id || null,
+      // professor_id legado = primeiro professor da lista (mantém filtros/colunas antigos).
+      professor_id: aula.professores_ids[0] || null,
       observacoes: aula.observacoes.trim() || null, status: aula.status,
       lembretes,
       // Campos antigos zerados: a lista de lembretes é a fonte da verdade agora.
       lembrete_dias_antes: null, lembrete_texto: null,
       relatorio_lembrete_data: aula.relatorio_lembrete ? aula.relatorio_lembrete_data || null : null,
     }
-    const { error } = editandoAula
-      ? await supabase.from('cronograma').update(payload).eq('id', editandoAula.id)
-      : await supabase.from('cronograma').insert(payload)
+    const { data: salva, error } = editandoAula
+      ? await supabase.from('cronograma').update(payload).eq('id', editandoAula.id).select('id').single()
+      : await supabase.from('cronograma').insert(payload).select('id').single()
+    if (error || !salva) { setSalvando(false); toast.error('Erro ao salvar a aula no cronograma.'); return }
+    const aulaId = (salva as { id: string }).id
+
+    // Sincroniza a lista de professores responsáveis (cronograma_professores):
+    // insere os novos, remove os retirados, preserva os mantidos (token + status).
+    const existentes = editandoAula?.cronograma_professores ?? []
+    const idsExistentes = existentes.map((cp) => cp.professor_id).filter(Boolean) as string[]
+    const inserir = aula.professores_ids
+      .filter((id) => !idsExistentes.includes(id))
+      .map((id) => ({
+        cronograma_id: aulaId,
+        professor_id: id,
+        professor_nome: professores.find((p) => p.id === id)?.nome ?? 'Professor',
+      }))
+    const removerIds = existentes
+      .filter((cp) => !cp.professor_id || !aula.professores_ids.includes(cp.professor_id))
+      .map((cp) => cp.id)
+    if (removerIds.length) {
+      await supabase.from('cronograma_professores').delete().in('id', removerIds)
+    }
+    if (inserir.length) {
+      await supabase.from('cronograma_professores').insert(inserir)
+    }
     setSalvando(false)
-    if (error) { toast.error('Erro ao salvar a aula no cronograma.'); return }
+
     const nomePolo = polos.find((p) => p.id === aula.polo_id)?.nome ?? ''
     registrarLog({
       acao: editandoAula ? 'editar' : 'criar', entidade: 'cronograma', entidadeId: editandoAula?.id,
       descricao: `${editandoAula ? 'Editou' : 'Agendou'} a Aula ${aula.numero_aula} do polo "${nomePolo}" (${fmtData(aula.data)}).`,
     })
     toast.success(editandoAula ? 'Aula atualizada.' : 'Aula agendada.')
-    setAulaDrawer(false); carregar()
+    setAulaDrawer(false)
+    carregar()
+
+    // Popup de confirmação de presença: relê os professores da aula (com tokens)
+    // e abre o WhatsApp para cada um. Só aparece se houver professores.
+    if (aula.professores_ids.length) {
+      const { data: profs } = await supabase.from('cronograma_professores')
+        .select('id, cronograma_id, professor_id, professor_nome, token, status, respondido_em, professores(nome, contato)')
+        .eq('cronograma_id', aulaId)
+      abrirConfirmacao(
+        { numero_aula: aula.numero_aula, data: aula.data, polos: { nome: nomePolo } } as CronogramaItem,
+        (profs ?? []) as unknown as CronogramaProfessor[],
+      )
+    }
   }
   const excluirAula = async () => {
     if (!aulaExcluir) return
@@ -181,8 +260,12 @@ export default function Cronograma() {
 
   const passaPolo = (poloId: string | null) => !filtroPolo || poloId === filtroPolo
 
-  const aulasFiltradas = itens.filter((c) =>
-    passaPolo(c.polo_id) && (!filtroProfessor || c.professor_id === filtroProfessor))
+  const passaProfessor = (c: CronogramaItem) =>
+    !filtroProfessor
+    || c.professor_id === filtroProfessor
+    || (c.cronograma_professores ?? []).some((cp) => cp.professor_id === filtroProfessor)
+
+  const aulasFiltradas = itens.filter((c) => passaPolo(c.polo_id) && passaProfessor(c))
 
   // Itens do calendário: aulas agendadas + aulas realizadas + lembretes (calculados a partir das aulas)
   const calendarItems: CalendarItem[] = [
@@ -229,7 +312,22 @@ export default function Cronograma() {
     { key: 'data', header: 'Data', sortable: true, render: (c) => fmtData(c.data) },
     { key: 'polo', header: 'Polo', render: (c) => c.polos?.nome ?? '—' },
     { key: 'numero_aula', header: 'Aula', sortable: true, render: (c) => `Aula ${c.numero_aula}` },
-    { key: 'professor', header: 'Professor', render: (c) => c.professores?.nome ?? '—' },
+    {
+      key: 'professor', header: 'Professores',
+      render: (c) => {
+        const cps = c.cronograma_professores ?? []
+        if (!cps.length) return c.professores?.nome ?? '—'
+        const confirmados = cps.filter((x) => x.status === 'confirmado').length
+        return (
+          <div className="flex flex-col">
+            <span>{cps.map((x) => x.professor_nome).join(', ')}</span>
+            <span className="text-xs text-[var(--c-text-soft)]">
+              {confirmados}/{cps.length} confirmaram
+            </span>
+          </div>
+        )
+      },
+    },
     { key: 'status', header: 'Status', sortable: true, render: (c) => <StatusBadge status={c.status} /> },
     {
       key: 'lembrete', header: 'Lembretes',
@@ -247,6 +345,12 @@ export default function Cronograma() {
       key: 'acoes', header: '',
       render: (c) => (
         <div className="flex justify-end gap-1">
+          {(c.cronograma_professores ?? []).length > 0 && (
+            <button className="btn btn-ghost !px-2 !py-1 text-xs"
+                    onClick={() => abrirConfirmacao(c, c.cronograma_professores ?? [])}>
+              💬 Confirmar
+            </button>
+          )}
           {c.relatorio_lembrete_data && (
             <button className="btn btn-ghost !px-2 !py-1 text-xs" onClick={() => abrirEnvio(c)}>
               💬 Relatório
@@ -384,12 +488,49 @@ export default function Cronograma() {
             <input type="date" value={aula.data} aria-invalid={!!aulaErros.data}
                    onChange={(e) => setAula((f) => ({ ...f, data: e.target.value }))} />
           </Field>
-          <Field label="Professor responsável">
-            <select value={aula.professor_id}
-                    onChange={(e) => setAula((f) => ({ ...f, professor_id: e.target.value }))}>
-              <option value="">A definir</option>
-              {professores.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            </select>
+          <Field label="Professores responsáveis">
+            {aula.professores_ids.length > 0 ? (
+              <ul className="mb-2 flex flex-col gap-1.5">
+                {aula.professores_ids.map((id) => {
+                  const prof = professores.find((p) => p.id === id)
+                  const cp = editandoAula?.cronograma_professores?.find((x) => x.professor_id === id)
+                  return (
+                    <li key={id}
+                        className="flex items-center gap-2 rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm">
+                      <span className="flex-1">{prof?.nome ?? 'Professor'}</span>
+                      {cp && (
+                        <span className={`badge !py-0.5 text-xs ${STATUS_CONFIRMACAO[cp.status].badge}`}>
+                          {STATUS_CONFIRMACAO[cp.status].label}
+                        </span>
+                      )}
+                      {!somenteLeitura && (
+                        <button type="button"
+                                className="btn btn-ghost !px-2 !py-0.5 text-[var(--c-danger)]"
+                                onClick={() => removerProfessor(id)}
+                                aria-label={`Remover ${prof?.nome ?? 'professor'}`}>
+                          ✕
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="mb-2 text-xs text-[var(--c-text-soft)]">Nenhum professor definido ainda.</p>
+            )}
+            {!somenteLeitura && (
+              <select value="" aria-label="Adicionar professor"
+                      onChange={(e) => adicionarProfessor(e.target.value)}>
+                <option value="">＋ Adicionar professor…</option>
+                {professores
+                  .filter((p) => !aula.professores_ids.includes(p.id))
+                  .map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            )}
+            <p className="mt-1.5 text-xs text-[var(--c-text-soft)]">
+              Ao salvar, abre um popup para enviar o link de confirmação de presença
+              para cada professor pelo WhatsApp.
+            </p>
           </Field>
           <Field label="Status">
             <select value={aula.status}
@@ -539,6 +680,68 @@ export default function Cronograma() {
             Ao tocar em “Abrir WhatsApp”, o app abre com a mensagem pronta — escolha o grupo
             das famílias e envie.
           </p>
+        </div>
+      </Modal>
+
+      {/* Modal: confirmar presença dos professores (link no WhatsApp) */}
+      <Modal
+        open={!!confirmModal}
+        title="Confirmar presença dos professores"
+        onClose={() => setConfirmModal(null)}
+        footer={<button className="btn btn-primary" onClick={() => setConfirmModal(null)}>Fechar</button>}
+      >
+        <div className="flex flex-col gap-3">
+          {confirmModal && (
+            <>
+              <p className="text-sm text-[var(--c-text-soft)]">
+                {confirmModal.titulo} · {confirmModal.subtitulo}
+              </p>
+              <p className="rounded-lg bg-[var(--c-blue-bg)] px-3 py-2 text-xs text-[var(--c-blue-fg)]">
+                Envie o link de confirmação para cada professor. Ao abrir, ele confirma
+                ou recusa a presença — o status aparece aqui e no cronograma.
+              </p>
+              <ul className="flex flex-col gap-2">
+                {confirmModal.profs.map((prof) => {
+                  const contato = prof.professores?.contato ?? null
+                  const link = `${window.location.origin}/confirmar/${prof.token}`
+                  const msg = msgConfirmacao(confirmModal.titulo, confirmModal.subtitulo, prof)
+                  return (
+                    <li key={prof.id}
+                        className="flex flex-col gap-2 rounded-lg border border-[var(--c-border)] p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 text-sm font-medium">{prof.professor_nome}</span>
+                        <span className={`badge !py-0.5 text-xs ${STATUS_CONFIRMACAO[prof.status].badge}`}>
+                          {STATUS_CONFIRMACAO[prof.status].label}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          className={`btn btn-primary !py-1.5 text-sm ${contato ? '' : 'pointer-events-none opacity-50'}`}
+                          href={contato ? linkWhatsApp(contato, msg) : undefined}
+                          target="_blank" rel="noreferrer"
+                          aria-disabled={!contato}
+                        >
+                          💬 WhatsApp
+                        </a>
+                        <button className="btn btn-ghost !py-1.5 text-sm"
+                                onClick={async () => {
+                                  await navigator.clipboard.writeText(link)
+                                  toast.success('Link de confirmação copiado.')
+                                }}>
+                          🔗 Copiar link
+                        </button>
+                      </div>
+                      {!contato && (
+                        <p className="text-xs text-[var(--c-amber-fg)]">
+                          Sem telefone cadastrado para este professor — use “Copiar link”.
+                        </p>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
         </div>
       </Modal>
     </div>

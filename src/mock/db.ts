@@ -11,6 +11,7 @@ export interface MockDB {
   aluno_responsaveis: any[]
   materiais: any[]
   cronograma: any[]
+  cronograma_professores: any[]
   historico_aulas: any[]
   presencas: any[]
   fotos_aula: any[]
@@ -46,6 +47,8 @@ function seed(): MockDB {
   const r = Array.from({ length: 7 }, () => uuid())
   // Histórico
   const h1 = uuid(); const h2 = uuid(); const h3 = uuid()
+  // Aulas agendadas com professores/confirmação de presença
+  const cg1 = uuid(); const cg2 = uuid()
 
   return {
     polos: [
@@ -109,10 +112,17 @@ function seed(): MockDB {
     cronograma: [
       { id: uuid(), polo_id: p1, numero_aula: 3, data: dataEm(-7), professor_id: pr1, observacoes: null, status: 'concluida', lembretes: [], relatorio_lembrete_data: dataEm(1), created_at: diasAtras(20) },
       { id: uuid(), polo_id: p2, numero_aula: 1, data: dataEm(-5), professor_id: pr2, observacoes: null, status: 'concluida', lembretes: [], relatorio_lembrete_data: null, created_at: diasAtras(20) },
-      { id: uuid(), polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', lembretes: [{ dias_antes: 2, texto: 'Organizar materiais' }, { dias_antes: 7, texto: 'Confirmar presença com as famílias' }], relatorio_lembrete_data: null, created_at: diasAtras(10) },
+      { id: cg1, polo_id: p1, numero_aula: 4, data: dataEm(0), professor_id: pr1, observacoes: 'Hoje!', status: 'agendada', lembretes: [{ dias_antes: 2, texto: 'Organizar materiais' }, { dias_antes: 7, texto: 'Confirmar presença com as famílias' }], relatorio_lembrete_data: null, created_at: diasAtras(10) },
       { id: uuid(), polo_id: p3, numero_aula: 1, data: dataEm(3), professor_id: null, observacoes: 'Professor a definir.', status: 'agendada', lembretes: [{ dias_antes: 2, texto: 'Imprimir listas de presença' }], relatorio_lembrete_data: null, created_at: diasAtras(8) },
-      { id: uuid(), polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', lembretes: [], relatorio_lembrete_data: null, created_at: diasAtras(5) },
+      { id: cg2, polo_id: p2, numero_aula: 2, data: dataEm(7), professor_id: pr2, observacoes: null, status: 'agendada', lembretes: [], relatorio_lembrete_data: null, created_at: diasAtras(5) },
       { id: uuid(), polo_id: p1, numero_aula: 5, data: dataEm(14), professor_id: pr1, observacoes: null, status: 'agendada', lembretes: [], relatorio_lembrete_data: null, created_at: diasAtras(3) },
+    ],
+    cronograma_professores: [
+      // Aula de hoje (cg1): Ana confirmou, Bruno ainda pendente.
+      { id: uuid(), cronograma_id: cg1, professor_id: pr1, professor_nome: 'Ana Lima', token: 'demo-token-ana', status: 'confirmado', respondido_em: diasAtras(1), created_at: diasAtras(9) },
+      { id: uuid(), cronograma_id: cg1, professor_id: pr2, professor_nome: 'Bruno Castro', token: 'demo-token-bruno', status: 'pendente', respondido_em: null, created_at: diasAtras(9) },
+      // Aula futura do Centro (cg2): Bruno recusou.
+      { id: uuid(), cronograma_id: cg2, professor_id: pr2, professor_nome: 'Bruno Castro', token: 'demo-token-bruno-2', status: 'recusado', respondido_em: diasAtras(1), created_at: diasAtras(4) },
     ],
     historico_aulas: [
       { id: h1, polo_id: p1, numero_aula: 3, ciclo: 1, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
@@ -175,6 +185,7 @@ export function loadDB(): MockDB {
       const db = JSON.parse(raw) as MockDB
       // Migração: dados salvos antes de novas tabelas/colunas existirem
       if (!db.alunos_sugeridos) db.alunos_sugeridos = []
+      if (!db.cronograma_professores) db.cronograma_professores = []
       if (!db.solicitacoes_contato) db.solicitacoes_contato = []
       if (!db.logs) db.logs = []
       if (!db.configuracoes) db.configuracoes = []

@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-14** — chore: ignora .vercel e .env.local (vercel link) (75ef6b3)
 - **2026-07-14** — chore: redeploy com variaveis do Supabase na Vercel (1a11682)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (cfcacf1)
 - **2026-07-14** — Banco de dados real (Supabase) com acesso por allowlist e senha padrao (9205e98)
 - **2026-07-14** — chore: update recent commits in CLAUDE.md (9cb47ba)
-- **2026-07-14** — Adiciona menu Galeria de fotos com filtros por polo, aula, ciclo e data (8a25832)
 
 (Updated automatically by git post-commit hook)
 

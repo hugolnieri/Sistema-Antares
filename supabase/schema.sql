@@ -200,23 +200,30 @@ create table if not exists permissoes_usuarios (
 
 -- Segredos do servidor (token HMAC do professor, credenciais Microsoft
 -- Graph, bootstrap). RLS ligada SEM policies: só a service role acessa.
--- Chaves usadas: polo_token_secret, bootstrap_token (apagada após o uso),
--- ms_tenant_id, ms_client_id, ms_client_secret, ms_site_url (Graph).
+-- Chaves usadas: polo_token_secret, bootstrap_token (apagada após o uso) e,
+-- para as fotos no SharePoint via Microsoft Graph: ms_tenant_id, ms_client_id,
+-- ms_client_secret, ms_site_url, ms_site_id, ms_drive_id (os dois últimos são
+-- resolvidos uma vez a partir da ms_site_url e guardados para reuso).
 create table if not exists segredos (
   chave      text primary key,
   valor      text,
   created_at timestamptz not null default now()
 );
 
--- Fotos: o banco guarda só metadados. Arquivo fica no Storage
--- (e futuramente no SharePoint — use url_externa para isso).
+-- Fotos: o banco guarda só metadados. O arquivo em si fica no SharePoint
+-- (destino padrão) ou, no fallback, no bucket privado 'fotos-aulas'.
+--   arquivo_path = 'sp:<itemId>'  -> item no SharePoint (via Microsoft Graph);
+--                                    a URL de exibição vem da Edge Function
+--                                    'fotos' e expira em ~1h (não é pública).
+--   arquivo_path = '<caminho>'    -> objeto no bucket 'fotos-aulas' (URL assinada).
+--   url_externa                   -> URL direta (usada só no modo demonstração).
 create table if not exists fotos_aula (
   id           uuid primary key default gen_random_uuid(),
   historico_id uuid not null references historico_aulas(id) on delete cascade,
   polo_id      uuid not null references polos(id) on delete cascade,
   nome_arquivo text not null,
-  arquivo_path text,                         -- caminho no bucket 'fotos-aulas'
-  url_externa  text,                         -- reservado para SharePoint futuramente
+  arquivo_path text,
+  url_externa  text,
   created_at   timestamptz not null default now()
 );
 
@@ -490,6 +497,10 @@ create policy admin_storage_delete on storage.objects
 --    (o bootstrap_token é apagado após o primeiro uso).
 -- 4. Novos usuários: adicionados em /admin/configuracoes — a conta é criada
 --    com a senha padrão e o próprio usuário troca depois (avatar > senha).
--- 5. Microsoft Graph (fotos no SharePoint): preencher em segredos as chaves
---    ms_tenant_id, ms_client_id, ms_client_secret, ms_site_url.
+-- 5. Microsoft Graph (fotos no SharePoint) — JÁ CONFIGURADO em 2026-07-15:
+--    segredos ms_tenant_id/ms_client_id/ms_client_secret/ms_site_url +
+--    ms_site_id/ms_drive_id (resolvidos do site). Edge Functions 'polo'
+--    (upload) e 'fotos' (URLs temporárias p/ o admin) já usam essas chaves.
+--    O App Registration precisa de Sites.ReadWrite.All (Application) com
+--    consentimento de administrador concedido.
 -- ------------------------------------------------------------

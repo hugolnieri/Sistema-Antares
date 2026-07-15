@@ -395,6 +395,19 @@ async function rpc(nome: string, params: any) {
   return { data: null, error: { message: `RPC desconhecida: ${nome}` } }
 }
 
+/* ---------------- Edge Functions ---------------- */
+
+// Na demonstração as fotos usam url_externa (data URLs), então nenhuma passa
+// pela função "fotos". Mantemos a interface para o front não quebrar.
+const functions = {
+  async invoke(nome: string, _opts?: { body?: any }) {
+    await sleep(100)
+    if (nome === 'fotos') return { data: { urls: {} }, error: null }
+    if (nome === 'admin-usuarios') return { data: { ok: true }, error: null }
+    return { data: null, error: { message: `Função desconhecida: ${nome}` } }
+  },
+}
+
 /* ---------------- Client ---------------- */
 
 export function createMockSupabase() {
@@ -406,5 +419,6 @@ export function createMockSupabase() {
     rpc,
     auth,
     storage,
+    functions,
   }
 }

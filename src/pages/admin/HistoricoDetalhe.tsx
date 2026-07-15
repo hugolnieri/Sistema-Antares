@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { StatusBadge, EmptyState } from '../../components/ui'
 import { fmtDataHora } from '../../lib/format'
+import { resolverUrlsFotos } from '../../lib/fotos'
 import type { HistoricoAula } from '../../lib/types'
 
 interface FotoComUrl { id: string; nome_arquivo: string; url: string | null }
@@ -28,16 +29,9 @@ export default function HistoricoDetalhe() {
         }
         const hist = data as unknown as HistoricoAula
         setRegistro(hist)
-        const comUrl = await Promise.all(
-          (hist.fotos_aula ?? []).map(async (f) => {
-            if (f.url_externa) return { id: f.id, nome_arquivo: f.nome_arquivo, url: f.url_externa }
-            if (!f.arquivo_path) return { id: f.id, nome_arquivo: f.nome_arquivo, url: null }
-            const { data: signed } = await supabase.storage
-              .from('fotos-aulas').createSignedUrl(f.arquivo_path, 3600)
-            return { id: f.id, nome_arquivo: f.nome_arquivo, url: signed?.signedUrl ?? null }
-          }),
-        )
-        setFotos(comUrl)
+        const lista = hist.fotos_aula ?? []
+        const urls = await resolverUrlsFotos(lista)
+        setFotos(lista.map((f) => ({ id: f.id, nome_arquivo: f.nome_arquivo, url: urls[f.id] ?? null })))
         setLoading(false)
       })
   }, [id])

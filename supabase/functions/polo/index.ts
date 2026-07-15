@@ -36,6 +36,66 @@ const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;   // 5 MB por foto
 const MAX_FOTOS = 10;
 
+// --- Microsoft Graph (fotos no SharePoint) ---------------------------------
+// As fotos das aulas vão para o SharePoint do colégio (biblioteca "Documentos"
+// do site Antares Fotos). O compartilhamento anônimo está DESABILITADO no
+// tenant (bom p/ privacidade), então nada fica público: a leitura acontece via
+// Edge Function "fotos", que entrega URLs temporárias só a admins autenticados.
+// Credenciais ficam na tabela `segredos` (só a service role lê). Se o Graph
+// estiver indisponível/mal configurado, o upload cai no bucket privado do
+// Supabase (fallback) — a chamada do professor nunca quebra por causa da foto.
+
+let graphTokenCache: { token: string; exp: number } | null = null;
+let graphCfgCache: { tenant: string; client: string; secret: string; driveId: string } | null = null;
+
+async function getGraphConfig() {
+  if (graphCfgCache) return graphCfgCache;
+  const { data } = await supabase
+    .from("segredos").select("chave, valor")
+    .in("chave", ["ms_tenant_id", "ms_client_id", "ms_client_secret", "ms_drive_id"]);
+  const m = new Map((data ?? []).map((r: any) => [r.chave, r.valor]));
+  const tenant = m.get("ms_tenant_id"), client = m.get("ms_client_id");
+  const secret = m.get("ms_client_secret"), driveId = m.get("ms_drive_id");
+  if (!tenant || !client || !secret || !driveId) return null; // Graph não configurado
+  graphCfgCache = { tenant, client, secret, driveId };
+  return graphCfgCache;
+}
+
+async function getGraphToken(cfg: { tenant: string; client: string; secret: string }): Promise<string | null> {
+  if (graphTokenCache && graphTokenCache.exp > Date.now() + 60_000) return graphTokenCache.token;
+  const res = await fetch(`https://login.microsoftonline.com/${cfg.tenant}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: cfg.client, client_secret: cfg.secret,
+      scope: "https://graph.microsoft.com/.default", grant_type: "client_credentials",
+    }),
+  });
+  if (!res.ok) return null;
+  const j = await res.json();
+  if (!j.access_token) return null;
+  graphTokenCache = { token: j.access_token, exp: Date.now() + (j.expires_in ?? 3600) * 1000 };
+  return j.access_token;
+}
+
+// Sobe UMA foto ao SharePoint. Retorna o id do item (drive item) ou null se
+// o Graph não estiver disponível — nesse caso o chamador usa o bucket.
+async function graphUploadFoto(path: string, foto: File): Promise<string | null> {
+  const cfg = await getGraphConfig();
+  if (!cfg) return null;
+  const token = await getGraphToken(cfg);
+  if (!token) return null;
+  const url = `https://graph.microsoft.com/v1.0/drives/${cfg.driveId}/root:/${path}:/content`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": foto.type || "application/octet-stream" },
+    body: await foto.arrayBuffer(),
+  });
+  if (!res.ok) return null;
+  const item = await res.json();
+  return item?.id ?? null;
+}
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -354,18 +414,35 @@ function validarFotos(fotos: File[], jaExistentes = 0): Response | null {
   return null;
 }
 
+// Sobe as fotos e registra em fotos_aula. Destino preferencial: SharePoint
+// (arquivo_path = "sp:<itemId>"). Se o Graph falhar, cai no bucket privado do
+// Supabase (arquivo_path = caminho no bucket). O front resolve os dois casos.
 async function uploadFotos(poloId: string, historicoId: string, fotos: File[]): Promise<string[]> {
   const fotosErro: string[] = [];
   for (const foto of fotos) {
     const ext = (foto.name.split(".").pop() || "jpg").toLowerCase();
-    const path = `${poloId}/${historicoId}/${crypto.randomUUID()}.${ext}`;
-    const { error: upErr } = await supabase.storage
-      .from("fotos-aulas")
-      .upload(path, foto, { contentType: foto.type });
-    if (upErr) { fotosErro.push(foto.name); continue; }
+    const nome = `${crypto.randomUUID()}.${ext}`;
+    const path = `${poloId}/${historicoId}/${nome}`;
+
+    // 1) Tenta o SharePoint (Microsoft Graph)
+    let arquivoPath: string | null = null;
+    try {
+      const itemId = await graphUploadFoto(path, foto);
+      if (itemId) arquivoPath = `sp:${itemId}`;
+    } catch (_e) { /* cai no fallback abaixo */ }
+
+    // 2) Fallback: bucket privado do Supabase
+    if (!arquivoPath) {
+      const { error: upErr } = await supabase.storage
+        .from("fotos-aulas")
+        .upload(path, foto, { contentType: foto.type });
+      if (upErr) { fotosErro.push(foto.name); continue; }
+      arquivoPath = path;
+    }
+
     await supabase.from("fotos_aula").insert({
       historico_id: historicoId, polo_id: poloId,
-      nome_arquivo: foto.name, arquivo_path: path,
+      nome_arquivo: foto.name, arquivo_path: arquivoPath,
     });
   }
   return fotosErro;

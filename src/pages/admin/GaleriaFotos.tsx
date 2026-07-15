@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Field, Modal, EmptyState } from '../../components/ui'
 import { fmtData, fmtDataHora } from '../../lib/format'
+import { resolverUrlsFotos } from '../../lib/fotos'
 import type { Polo } from '../../lib/types'
 
 interface FotoGaleria {
@@ -55,17 +56,9 @@ export default function GaleriaFotos() {
     }
     setPolos((polosRes.data ?? []) as Pick<Polo, 'id' | 'nome'>[])
     const base = (fotosRes.data ?? []) as unknown as FotoGaleria[]
-    // Resolve a URL de cada foto: url_externa (SharePoint/demo) ou URL assinada.
-    const comUrl = await Promise.all(
-      base.map(async (f): Promise<FotoComUrl> => {
-        if (f.url_externa) return { ...f, url: f.url_externa }
-        if (!f.arquivo_path) return { ...f, url: null }
-        const { data: signed } = await supabase.storage
-          .from('fotos-aulas').createSignedUrl(f.arquivo_path, 3600)
-        return { ...f, url: signed?.signedUrl ?? null }
-      }),
-    )
-    setFotos(comUrl)
+    // Resolve a URL de cada foto: demo (url_externa), SharePoint (sp:) ou bucket.
+    const urls = await resolverUrlsFotos(base)
+    setFotos(base.map((f) => ({ ...f, url: urls[f.id] ?? null })))
     setLoading(false)
   }, [])
 

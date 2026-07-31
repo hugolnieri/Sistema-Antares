@@ -124,10 +124,12 @@ function seed(): MockDB {
       // Aula futura do Centro (cg2): Bruno recusou.
       { id: uuid(), cronograma_id: cg2, professor_id: pr2, professor_nome: 'Bruno Castro', token: 'demo-token-bruno-2', status: 'recusado', respondido_em: diasAtras(1), created_at: diasAtras(4) },
     ],
+    // A Aula 3 do polo p1 já tem o turno da manhã concluído — selecionar
+    // "Aula 3 · Tarde" na demo mostra quem já veio de manhã num bloco à parte.
     historico_aulas: [
-      { id: h1, polo_id: p1, numero_aula: 3, ciclo: 1, professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
-      { id: h2, polo_id: p2, numero_aula: 1, ciclo: 1, professor_nome: 'Bruno Castro', professores_nomes: ['Bruno Castro'], data_hora: diasAtras(5), relatorio: 'Aula de boas-vindas, apresentação do programa às famílias.', criado_por: 'professor', created_at: diasAtras(5) },
-      { id: h3, polo_id: p1, numero_aula: 2, ciclo: 1, professor_nome: 'Ana Lima', professores_nomes: ['Ana Lima'], data_hora: diasAtras(20), relatorio: null, criado_por: 'professor', created_at: diasAtras(20) },
+      { id: h1, polo_id: p1, numero_aula: 3, ciclo: 1, periodo: 'manha', professor_nome: 'Ana Lima, Bruno Castro', professores_nomes: ['Ana Lima', 'Bruno Castro'], data_hora: diasAtras(2), relatorio: 'Trabalhamos os fundamentos da parte 2 com dinâmica em grupo. Todos concluíram a atividade.', criado_por: 'professor', created_at: diasAtras(2) },
+      { id: h2, polo_id: p2, numero_aula: 1, ciclo: 1, periodo: 'manha', professor_nome: 'Bruno Castro', professores_nomes: ['Bruno Castro'], data_hora: diasAtras(5), relatorio: 'Aula de boas-vindas, apresentação do programa às famílias.', criado_por: 'professor', created_at: diasAtras(5) },
+      { id: h3, polo_id: p1, numero_aula: 2, ciclo: 1, periodo: 'tarde', professor_nome: 'Ana Lima', professores_nomes: ['Ana Lima'], data_hora: diasAtras(20), relatorio: null, criado_por: 'professor', created_at: diasAtras(20) },
     ],
     presencas: [
       { id: uuid(), historico_id: h1, aluno_id: al[0], aluno_nome: 'Alice Ferreira', presente: true },
@@ -156,7 +158,7 @@ function seed(): MockDB {
     logs: [
       { id: uuid(), ator: 'admin@antares.com', ator_tipo: 'admin', acao: 'criar', entidade: 'polo', entidade_id: p1, descricao: 'Criou o polo "Jardim Santa Maria".', created_at: diasAtras(90) },
       { id: uuid(), ator: 'Professor · Jardim Santa Maria', ator_tipo: 'professor', acao: 'login', entidade: 'sessao', entidade_id: p1, descricao: 'Professor acessou o polo "Jardim Santa Maria".', created_at: diasAtras(2) },
-      { id: uuid(), ator: 'Professor · Jardim Santa Maria', ator_tipo: 'professor', acao: 'chamada', entidade: 'chamada', entidade_id: h1, descricao: 'Registrou a chamada da Aula 3 (Ciclo 1).', created_at: diasAtras(2) },
+      { id: uuid(), ator: 'Professor · Jardim Santa Maria', ator_tipo: 'professor', acao: 'chamada', entidade: 'chamada', entidade_id: h1, descricao: 'Registrou a chamada da Aula 3 · Manhã (Ciclo 1).', created_at: diasAtras(2) },
     ],
     configuracoes: [
       // WhatsApp do responsável do colégio Antares — recebe as consultas dos professores.
@@ -212,6 +214,8 @@ export function loadDB(): MockDB {
       for (const m of db.materiais) if (m.relatorio === undefined) m.relatorio = null
       for (const p of db.polos) if (p.ciclo_atual === undefined) p.ciclo_atual = 1
       for (const h of db.historico_aulas) if (h.ciclo === undefined) h.ciclo = 1
+      // Dois turnos por dia: chamadas antigas não têm turno gravado -> manhã.
+      for (const h of db.historico_aulas) if (h.periodo === undefined) h.periodo = 'manha'
       // Professor: "disponivel"/"ocupado" + campo "ativo" separado viraram um
       // único status "ativo"/"inativo" (igual polos/alunos/materiais).
       for (const p of db.professores) {

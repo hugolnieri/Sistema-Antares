@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { KpiCard, StatusBadge, EmptyState } from '../../components/ui'
 import { statusDe } from '../../lib/status'
-import { fmtData, fmtDataHora, subtrairDias } from '../../lib/format'
+import { fmtData, fmtDataHora, subtrairDias, rotuloPeriodo } from '../../lib/format'
 import { useToast } from '../../components/Toast'
 import { usePermissoes } from '../../lib/permissoes'
 import type { CronogramaItem, HistoricoAula, SolicitacaoContato } from '../../lib/types'
@@ -54,7 +54,7 @@ export default function Dashboard() {
       supabase.from('historico_aulas').select('id', { count: 'exact', head: true })
         .gte('data_hora', inicioMes.toISOString()),
       supabase.from('historico_aulas')
-        .select('id, numero_aula, professor_nome, data_hora, polos(nome)')
+        .select('id, numero_aula, periodo, professor_nome, data_hora, polos(nome)')
         .order('data_hora', { ascending: false }).limit(6),
       // Aulas dos próximos 30 dias — usadas para "hoje" e para calcular os lembretes
       supabase.from('cronograma')
@@ -269,7 +269,7 @@ export default function Dashboard() {
                       <td>
                         <Link to={`/admin/historico/${h.id}`} className="flex items-center gap-1">
                           <StatusBadge status="concluida" />
-                          <span className="ml-1">Aula {h.numero_aula}</span>
+                          <span className="ml-1">Aula {h.numero_aula} · {rotuloPeriodo(h.periodo)}</span>
                         </Link>
                       </td>
                       <td className="max-w-[160px] truncate">{h.professor_nome}</td>

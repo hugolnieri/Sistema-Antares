@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { poloApi } from '../../lib/poloApi'
 import { linkWhatsApp } from '../../lib/format'
+import { AULAS_POR_CICLO } from '../../lib/types'
+import type { AlunoChamada, Periodo } from '../../lib/types'
 import { Field, EmptyState, Modal } from '../../components/ui'
 import { useToast } from '../../components/Toast'
 import { usePolo } from './PoloLayout'
@@ -8,11 +10,20 @@ import { usePolo } from './PoloLayout'
 const MAX_FOTO_BYTES = 5 * 1024 * 1024
 const MAX_FOTOS = 10
 
+// Todo polo dá a mesma aula duas vezes no dia, para duas turmas.
+const PERIODOS: { valor: Periodo; rotulo: string; icone: string }[] = [
+  { valor: 'manha', rotulo: 'Manhã', icone: '🌅' },
+  { valor: 'tarde', rotulo: 'Tarde', icone: '🌇' },
+]
+
 export default function Chamada() {
   const { token, dados, recarregar } = usePolo()
   const toast = useToast()
 
   const hoje = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD no fuso local
+  // Turno da chamada: '' enquanto o professor não escolheu. A aula só fica
+  // selecionável depois, porque "concluída" depende do turno.
+  const [periodo, setPeriodo] = useState<Periodo | ''>('')
   const [numeroAula, setNumeroAula] = useState(0)
   // Quando != null, a chamada já existe no servidor: cada presença marcada é
   // salva na hora (sem botão de "salvar"), e data/professor/relatório ficam
@@ -25,6 +36,11 @@ export default function Chamada() {
   const [presencas, setPresencas] = useState<Record<string, boolean>>({})
   const [relatorio, setRelatorio] = useState('')
   const [fotos, setFotos] = useState<File[]>([])
+  // Na chamada da TARDE: quem já marcou presença no turno da manhã desta
+  // mesma aula. Esses alunos saem da lista principal e vão para um bloco
+  // recolhido no fim — ainda dá para marcar (aluno que vem nos dois turnos).
+  const [presentesManha, setPresentesManha] = useState<Set<string>>(new Set())
+  const [manhaAberta, setManhaAberta] = useState(false)
   // Sugestões de aluno enviadas nesta sessão (só para exibir "✓ enviado").
   // O envio é imediato (poloApi.sugerirAluno), funciona antes e depois da chamada.
   const [sugeridos, setSugeridos] = useState<string[]>([])
@@ -45,6 +61,7 @@ export default function Chamada() {
   const [enviandoConsulta, setEnviandoConsulta] = useState(false)
 
   const chamadaIniciada = historicoId !== null
+  const rotuloTurno = PERIODOS.find((p) => p.valor === periodo)?.rotulo ?? ''
 
   // Mensagem automática para o WhatsApp DO COLÉGIO ANTARES (número definido
   // em Configurações no admin; o contato do polo é apenas informativo) —
@@ -95,6 +112,8 @@ export default function Chamada() {
     setSugeridos([])
     setNovoExtra('')
     setErros({})
+    setPresentesManha(new Set())
+    setManhaAberta(false)
   }
 
   // Envia a sugestão de cadastro de um aluno na hora (antes ou depois de a
@@ -115,15 +134,37 @@ export default function Chamada() {
     }
   }
 
-  // Escolher a aula reseta o formulário. Se a aula já tiver uma chamada em
-  // andamento (pendente de fotos), busca os dados salvos e re-hidrata a tela
-  // — inclusive depois de recarregar a página sem querer.
-  const selecionarAula = async (n: number) => {
+  // Trocar de turno zera a seleção: a mesma Aula N é outra chamada em cada
+  // período, então nada do formulário anterior se aproveita.
+  const escolherPeriodo = (p: Periodo) => {
+    if (p === periodo) return
+    setPeriodo(p)
+    setNumeroAula(0)
+    limparFormulario()
+  }
+
+  // Abre a aula no turno escolhido. Se já existir uma chamada em andamento
+  // (pendente de fotos), busca os dados salvos e re-hidrata a tela — inclusive
+  // depois de recarregar a página sem querer.
+  const abrirChamada = async (n: number, p: Periodo) => {
+    setPeriodo(p)
     setNumeroAula(n)
     setErros({})
     setFotos([])
     setNovoExtra('')
-    const existente = dados.chamadas.find((c) => c.numeroAula === n)
+    setManhaAberta(false)
+
+    // Na tarde, quem já veio de manhã vai para o bloco recolhido. Falha aqui
+    // não impede a chamada — só deixa a lista sem a separação.
+    if (p === 'tarde') {
+      poloApi.presencasManha(token, n)
+        .then((r) => setPresentesManha(new Set(r.alunoIds)))
+        .catch(() => setPresentesManha(new Set()))
+    } else {
+      setPresentesManha(new Set())
+    }
+
+    const existente = dados.chamadas.find((c) => c.numeroAula === n && c.periodo === p)
 
     if (!existente) {
       setHistoricoId(null)
@@ -144,7 +185,7 @@ export default function Chamada() {
       setRelatorio(c.relatorio ?? '')
       setSugeridos([])
       const marcados: Record<string, boolean> = {}
-      for (const p of c.presencas) if (p.presente) marcados[p.alunoId] = true
+      for (const pr of c.presencas) if (pr.presente) marcados[pr.alunoId] = true
       setPresencas(marcados)
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao carregar a chamada.')
@@ -155,13 +196,24 @@ export default function Chamada() {
     }
   }
 
+  const escolherAula = (n: number) => {
+    if (!periodo) return
+    if (n === 0) {
+      setNumeroAula(0)
+      limparFormulario()
+      return
+    }
+    abrirChamada(n, periodo)
+  }
+
   // Reabre sozinho a aula em andamento (pendente de fotos) ao carregar/recarregar
   // a página — sem isso, a presença já salva no servidor só reaparecia depois
-  // que o professor selecionasse a aula de novo no dropdown.
+  // que o professor selecionasse a aula de novo no dropdown. Só age quando há
+  // exatamente uma pendência nos dois turnos somados (senão não dá pra adivinhar).
   useEffect(() => {
     if (numeroAula !== 0) return
-    const pendentes = dados.chamadas.filter((c) => !c.temFotos)
-    if (pendentes.length === 1) selecionarAula(pendentes[0].numeroAula)
+    const emAberto = dados.chamadas.filter((c) => !c.temFotos)
+    if (emAberto.length === 1) abrirChamada(emAberto[0].numeroAula, emAberto[0].periodo)
   }, [dados.chamadas]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const adicionarFotos = (lista: FileList | null) => {
@@ -193,6 +245,7 @@ export default function Chamada() {
   // "salvar chamada". No primeiro toggle de uma aula nova, a chamada é criada
   // no servidor; nos seguintes, só aquela presença é atualizada.
   const alternarPresenca = async (alunoId: string) => {
+    if (!periodo) return
     const novoValor = !presencas[alunoId]
     const presencasAntes = presencas
     const presencasDepois = { ...presencas }
@@ -216,6 +269,7 @@ export default function Chamada() {
         }))
         const r = await poloApi.salvarChamada(token, {
           numeroAula,
+          periodo,
           professoresNomes: professoresPreenchidos,
           dataAula,
           relatorio: relatorio.trim() || undefined,
@@ -257,7 +311,7 @@ export default function Chamada() {
         return
       }
       if (r.cicloConcluido) {
-        toast.success('🎉 Ciclo concluído! As aulas 1-18 estão liberadas de novo.')
+        toast.success('🎉 Ciclo concluído! As aulas 1-18 estão liberadas de novo nos dois turnos.')
       } else {
         toast.success('Aula concluída! Fotos enviadas.')
       }
@@ -273,16 +327,90 @@ export default function Chamada() {
   const presentesCount = dados.alunos.filter((a) => presencas[a.id]).length
   const camposTravados = chamadaIniciada // data/professor/relatório/extras não mudam mais
 
+  // Quantas aulas já foram concluídas (com foto) em cada turno do ciclo atual.
+  const concluidasNoTurno = (p: Periodo) =>
+    dados.chamadas.filter((c) => c.periodo === p && c.temFotos).length
+
+  // Na tarde, separa quem já veio de manhã do resto da turma.
+  const separarManha = periodo === 'tarde' && presentesManha.size > 0
+  const alunosDaManha = separarManha
+    ? dados.alunos.filter((a) => presentesManha.has(a.id))
+    : []
+  const alunosPrincipais = separarManha
+    ? dados.alunos.filter((a) => !presentesManha.has(a.id))
+    : dados.alunos
+
+  const linhaAluno = (a: AlunoChamada, vindoDaManha = false) => {
+    const marcado = presencas[a.id]
+    const travado = criandoChamada || pendentes.has(a.id)
+    return (
+      <li key={a.id} className="flex flex-col gap-2.5 border-b border-[var(--c-border)] p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold">
+              {a.nome}
+              {vindoDaManha && (
+                <span className="badge badge--amber ml-2 align-middle !text-xs">🌅 veio de manhã</span>
+              )}
+            </p>
+            {a.observacoes && (
+              <p className="mt-0.5 text-xs text-[var(--c-amber-fg)]">⚠️ {a.observacoes}</p>
+            )}
+          </div>
+          {dados.contatoAntares && (
+            <button
+              onClick={() => abrirConsultaResponsaveis(a.id, a.nome)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
+            >
+              💬 Consultar responsáveis
+            </button>
+          )}
+        </div>
+        <button
+          className={`btn w-full !py-2.5 ${marcado
+            ? '!bg-[var(--c-green-fg)] !text-white'
+            : 'btn-ghost'}`}
+          onClick={() => alternarPresenca(a.id)}
+          disabled={travado}
+          aria-pressed={marcado === true}
+        >
+          {travado ? 'Salvando…' : marcado ? '✓ Presente' : 'Confirmar presença'}
+        </button>
+      </li>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4 pb-6">
-      {/* Passo 0: escolher a aula (o resto do formulário só aparece depois) */}
-      <div className="card flex flex-col gap-2">
+      {/* Passo 0: escolher turno e aula (o resto do formulário só aparece depois) */}
+      <div className="card flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-semibold">
+            Turno <span className="text-red-600">*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {PERIODOS.map((p) => (
+              <button
+                key={p.valor}
+                className={`btn !py-3 !text-base ${periodo === p.valor ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => escolherPeriodo(p.valor)}
+                aria-pressed={periodo === p.valor}
+              >
+                {p.icone} {p.rotulo}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--c-text-soft)]">
+            Cada aula é dada duas vezes no dia — uma chamada para cada turma.
+          </p>
+        </div>
+
         <Field label="Aula" required>
-          <select value={numeroAula} className="!py-3 !text-lg"
-                  onChange={(e) => selecionarAula(Number(e.target.value))}>
-            <option value={0}>Selecione…</option>
-            {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => {
-              const c = dados.chamadas.find((ch) => ch.numeroAula === n)
+          <select value={numeroAula} className="!py-3 !text-lg" disabled={!periodo}
+                  onChange={(e) => escolherAula(Number(e.target.value))}>
+            <option value={0}>{periodo ? 'Selecione…' : 'Escolha o turno primeiro'}</option>
+            {Array.from({ length: AULAS_POR_CICLO }, (_, i) => i + 1).map((n) => {
+              const c = dados.chamadas.find((ch) => ch.numeroAula === n && ch.periodo === periodo)
               const concluida = c?.temFotos ?? false
               const pendente = !!c && !c.temFotos
               return (
@@ -294,16 +422,21 @@ export default function Chamada() {
             })}
           </select>
         </Field>
+
         <p className="text-xs text-[var(--c-text-soft)]">
-          Ciclo atual: {dados.polo.ciclo}
+          Ciclo atual: {dados.polo.ciclo} · 🌅 Manhã {concluidasNoTurno('manha')}/{AULAS_POR_CICLO}
+          {' · '}🌇 Tarde {concluidasNoTurno('tarde')}/{AULAS_POR_CICLO} concluídas
         </p>
       </div>
 
-      {numeroAula === 0 ? (
+      {numeroAula === 0 || !periodo ? (
         <div className="card">
           <EmptyState
-            icon="📋" title="Selecione a aula"
-            message="Escolha a aula acima para começar a marcar presença."
+            icon="📋"
+            title={periodo ? 'Selecione a aula' : 'Selecione o turno'}
+            message={periodo
+              ? `Escolha a aula do turno da ${rotuloTurno.toLowerCase()} para começar a marcar presença.`
+              : 'Escolha se esta chamada é da turma da manhã ou da tarde.'}
           />
         </div>
       ) : carregandoResumo ? (
@@ -314,8 +447,8 @@ export default function Chamada() {
         <>
           {chamadaIniciada && (
             <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
-              ✓ Aula iniciada — cada presença confirmada é salva na hora. Pode
-              fechar o link e voltar depois: nada se perde. Data, professor e
+              ✓ Aula {numeroAula} · {rotuloTurno} iniciada — cada presença confirmada é salva
+              na hora. Pode fechar o link e voltar depois: nada se perde. Data, professor e
               relatório já foram gravados e não podem mais ser alterados.
             </p>
           )}
@@ -365,10 +498,14 @@ export default function Chamada() {
             </div>
           </div>
 
-          {/* Lista de alunos */}
+          {/* Lista de alunos. Na tarde, quem já veio de manhã fica num bloco
+              recolhido no fim — ainda marcável, para quem vem nos dois turnos. */}
           <div className="card !p-0">
             <div className="flex items-center justify-between p-4">
-              <h2 className="font-bold">Alunos ({dados.alunos.length})</h2>
+              <h2 className="font-bold">
+                Alunos ({alunosPrincipais.length}
+                {separarManha ? ` de ${dados.alunos.length}` : ''})
+              </h2>
               <span className="text-sm text-[var(--c-text-soft)]">
                 {presentesCount} presente{presentesCount === 1 ? '' : 's'}
               </span>
@@ -379,43 +516,45 @@ export default function Chamada() {
                 message="Peça ao administrativo para cadastrar os alunos deste polo."
               />
             ) : (
-              <ul className="border-t border-[var(--c-border)]">
-                {dados.alunos.map((a) => {
-                  const marcado = presencas[a.id]
-                  const travado = criandoChamada || pendentes.has(a.id)
-                  return (
-                    <li key={a.id}
-                        className="flex flex-col gap-2.5 border-b border-[var(--c-border)] p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold">{a.nome}</p>
-                          {a.observacoes && (
-                            <p className="mt-0.5 text-xs text-[var(--c-amber-fg)]">⚠️ {a.observacoes}</p>
-                          )}
-                        </div>
-                        {dados.contatoAntares && (
-                          <button
-                            onClick={() => abrirConsultaResponsaveis(a.id, a.nome)}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
-                          >
-                            💬 Consultar responsáveis
-                          </button>
-                        )}
-                      </div>
-                      <button
-                        className={`btn w-full !py-2.5 ${marcado
-                          ? '!bg-[var(--c-green-fg)] !text-white'
-                          : 'btn-ghost'}`}
-                        onClick={() => alternarPresenca(a.id)}
-                        disabled={travado}
-                        aria-pressed={marcado === true}
-                      >
-                        {travado ? 'Salvando…' : marcado ? '✓ Presente' : 'Confirmar presença'}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+              <>
+                {alunosPrincipais.length === 0 ? (
+                  <p className="border-t border-[var(--c-border)] p-4 text-sm text-[var(--c-text-soft)]">
+                    Todos os alunos do polo já vieram no turno da manhã — abra o bloco abaixo
+                    se algum deles voltou à tarde.
+                  </p>
+                ) : (
+                  <ul className="border-t border-[var(--c-border)]">
+                    {alunosPrincipais.map((a) => linhaAluno(a))}
+                  </ul>
+                )}
+
+                {separarManha && (
+                  <div className="border-t border-[var(--c-border)]">
+                    <button
+                      className="flex w-full items-center justify-between gap-2 p-4 text-left"
+                      onClick={() => setManhaAberta((v) => !v)}
+                      aria-expanded={manhaAberta}
+                    >
+                      <span className="min-w-0">
+                        <span className="font-bold">
+                          🌅 Já vieram na aula da manhã ({alunosDaManha.length})
+                        </span>
+                        <span className="mt-0.5 block text-xs text-[var(--c-text-soft)]">
+                          Toque para abrir e marcar presença se algum deles voltou à tarde.
+                        </span>
+                      </span>
+                      <span aria-hidden="true" className="shrink-0 text-lg">
+                        {manhaAberta ? '▲' : '▼'}
+                      </span>
+                    </button>
+                    {manhaAberta && (
+                      <ul className="border-t border-[var(--c-border)]">
+                        {alunosDaManha.map((a) => linhaAluno(a, true))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -469,7 +608,7 @@ export default function Chamada() {
           {/* Fotos — só existe depois que a chamada foi criada (1º toggle) */}
           {chamadaIniciada && (
             <div className="card flex flex-col gap-3">
-              <h2 className="font-bold">📷 Fotos da Aula {numeroAula}</h2>
+              <h2 className="font-bold">📷 Fotos da Aula {numeroAula} · {rotuloTurno}</h2>
               <p className="text-xs text-[var(--c-text-soft)]">
                 A aula é <strong>concluída</strong> quando você envia as fotos.
               </p>

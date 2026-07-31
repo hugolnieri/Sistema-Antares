@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { StatusBadge, EmptyState } from '../../components/ui'
-import { fmtDataHora } from '../../lib/format'
+import { fmtDataHora, rotuloAula } from '../../lib/format'
 import { resolverUrlsFotos } from '../../lib/fotos'
 import type { HistoricoAula } from '../../lib/types'
 
@@ -74,7 +74,7 @@ export default function HistoricoDetalhe() {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-[var(--c-text-soft)]">Aula</p>
-            <p className="font-bold">Aula {registro.numero_aula} · Ciclo {registro.ciclo}</p>
+            <p className="font-bold">{rotuloAula(registro.numero_aula, registro.ciclo, registro.periodo)}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-[var(--c-text-soft)]">Professor</p>

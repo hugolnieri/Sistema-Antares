@@ -129,14 +129,34 @@ create table if not exists historico_aulas (
   polo_id           uuid not null references polos(id) on delete cascade,
   numero_aula       int  not null check (numero_aula between 1 and 18),
   ciclo             int  not null default 1,  -- em qual ciclo do polo essa aula foi dada
+  -- Todo polo dá a mesma aula duas vezes no dia (turma da manhã e da tarde).
+  -- O período faz parte da identidade da chamada: Aula N do ciclo M existe
+  -- uma vez em cada turno, e o ciclo só fecha com as 36 (18 x 2) concluídas.
+  periodo           text not null default 'manha' check (periodo in ('manha','tarde')),
   professor_nome    text not null,             -- nomes concatenados (exibição)
   professores_nomes text[] not null default '{}', -- lista de professores da aula
   data_hora         timestamptz not null default now(),
   relatorio         text,
   criado_por        text not null default 'professor',
   created_at        timestamptz not null default now(),
-  unique (polo_id, ciclo, numero_aula)
+  unique (polo_id, ciclo, numero_aula, periodo)
 );
+
+-- Migração para bancos já existentes: a unicidade antiga (polo, ciclo, aula)
+-- impedia a segunda chamada do dia.
+alter table historico_aulas add column if not exists periodo text not null default 'manha';
+do $$
+begin
+  alter table historico_aulas drop constraint if exists historico_aulas_periodo_check;
+  alter table historico_aulas add constraint historico_aulas_periodo_check
+    check (periodo in ('manha','tarde'));
+  alter table historico_aulas drop constraint if exists historico_aulas_polo_id_ciclo_numero_aula_key;
+  alter table historico_aulas drop constraint if exists historico_aulas_polo_ciclo_aula_periodo_key;
+  alter table historico_aulas add constraint historico_aulas_polo_ciclo_aula_periodo_key
+    unique (polo_id, ciclo, numero_aula, periodo);
+end $$;
+create index if not exists idx_historico_polo_ciclo_periodo
+  on historico_aulas(polo_id, ciclo, periodo);
 
 create table if not exists presencas (
   id           uuid primary key default gen_random_uuid(),

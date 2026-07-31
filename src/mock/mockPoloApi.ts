@@ -4,7 +4,8 @@
 
 import { loadDB, saveDB, uuid } from './db'
 import { pdfDemoUrl, storageUrl } from './mockClient'
-import type { ChamadaDetalhe, DadosPolo, PoloSessao } from '../lib/types'
+import { AULAS_POR_CICLO, CHAMADAS_POR_CICLO } from '../lib/types'
+import type { ChamadaDetalhe, DadosPolo, Periodo, PoloSessao } from '../lib/types'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const MAX_FOTO_BYTES = 5 * 1024 * 1024
@@ -44,15 +45,16 @@ function registrarLogProfessor(
 }
 
 // O ciclo se encerra quando TODAS as 18 aulas do ciclo atual têm foto
-// (concluídas). Avança polo.ciclo_atual e retorna true se completou agora.
+// (concluídas) nos DOIS turnos — 36 chamadas. Avança polo.ciclo_atual e
+// retorna true se completou agora.
 function avancarCicloSeCompleto(db: MockDB, polo: MockDB['polos'][number]): boolean {
-  const comFotos = new Set(
+  const concluidas = new Set(
     db.historico_aulas
       .filter((h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual)
       .filter((h) => db.fotos_aula.some((f) => f.historico_id === h.id))
-      .map((h) => h.numero_aula),
+      .map((h) => `${h.numero_aula}:${h.periodo ?? 'manha'}`),
   )
-  if (comFotos.size < 18) return false
+  if (concluidas.size < CHAMADAS_POR_CICLO) return false
   polo.ciclo_atual += 1
   return true
 }
@@ -111,12 +113,14 @@ export const mockPoloApi = {
           ? (storageUrl('materiais', m.arquivo_path) ?? pdfDemoUrl(m.titulo))
           : null,
       }))
-    // Chamadas do ciclo atual. temFotos separa "pendente de fotos" (ainda
-    // selecionável, pra anexar depois) de "concluída" (bloqueada no select).
+    // Chamadas do ciclo atual, uma por (aula, período). temFotos separa
+    // "pendente de fotos" (ainda selecionável, pra anexar depois) de
+    // "concluída" (bloqueada no select).
     const chamadas = db.historico_aulas
       .filter((h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual)
       .map((h) => ({
         numeroAula: h.numero_aula,
+        periodo: (h.periodo ?? 'manha') as Periodo,
         historicoId: h.id,
         temFotos: db.fotos_aula.some((f) => f.historico_id === h.id),
       }))
@@ -216,11 +220,37 @@ export const mockPoloApi = {
     return {
       historicoId: hist.id,
       numeroAula: hist.numero_aula,
+      periodo: (hist.periodo ?? 'manha') as Periodo,
       dataAula: hist.data_hora.slice(0, 10),
       professoresNomes: hist.professores_nomes,
       relatorio: hist.relatorio,
       presencas,
     }
+  },
+
+  // Quem já marcou presença no turno da MANHÃ desta aula (ciclo atual). A tela
+  // da tarde usa isso para separar num bloco à parte quem já veio no dia.
+  // Retorna [] se a chamada da manhã ainda não existir.
+  async presencasManha(token: string, numeroAula: number): Promise<{ alunoIds: string[] }> {
+    await sleep(200)
+    const db = loadDB()
+    const [poloId, tv] = token.split('.')
+    const polo = db.polos.find((p) => p.id === poloId)
+    if (!polo || polo.status !== 'ativo' || String(polo.token_version) !== tv) {
+      throw new Error('Sessão expirada. Digite a senha novamente.')
+    }
+    if (!numeroAula || numeroAula < 1 || numeroAula > AULAS_POR_CICLO) {
+      throw new Error('Aula inválida')
+    }
+    const hist = db.historico_aulas.find(
+      (h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual &&
+        h.numero_aula === numeroAula && (h.periodo ?? 'manha') === 'manha',
+    )
+    if (!hist) return { alunoIds: [] }
+    const alunoIds = db.presencas
+      .filter((p) => p.historico_id === hist.id && p.presente && p.aluno_id)
+      .map((p) => p.aluno_id as string)
+    return { alunoIds }
   },
 
   // Salva a presença de UM aluno na hora (sem esperar um botão de "salvar
@@ -252,6 +282,7 @@ export const mockPoloApi = {
     token: string,
     dados: {
       numeroAula: number
+      periodo?: Periodo
       professoresNomes: string[]
       dataAula: string
       relatorio?: string
@@ -269,16 +300,26 @@ export const mockPoloApi = {
     }
     const professores = (dados.professoresNomes ?? []).map((n) => n.trim()).filter(Boolean)
     if (!professores.length) throw new Error('Informe ao menos um professor')
-    if (!dados.numeroAula || dados.numeroAula < 1 || dados.numeroAula > 18) {
+    if (!dados.numeroAula || dados.numeroAula < 1 || dados.numeroAula > AULAS_POR_CICLO) {
       throw new Error('Aula inválida')
     }
+    // Sem período (cliente antigo) assume manhã — a tarde é sempre explícita.
+    const periodo: Periodo = dados.periodo ?? 'manha'
+    if (periodo !== 'manha' && periodo !== 'tarde') throw new Error('Período inválido')
     if (!dados.dataAula || !/^\d{4}-\d{2}-\d{2}$/.test(dados.dataAula)) {
       throw new Error('Informe a data da aula')
     }
+    // A mesma aula pode (e deve) ser dada nos dois turnos — só a repetição no
+    // mesmo turno do mesmo ciclo é erro.
     const jaDada = db.historico_aulas.some(
-      (h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual && h.numero_aula === dados.numeroAula,
+      (h) => h.polo_id === polo.id && h.ciclo === polo.ciclo_atual &&
+        h.numero_aula === dados.numeroAula && (h.periodo ?? 'manha') === periodo,
     )
-    if (jaDada) throw new Error('Esta aula já foi registrada neste ciclo. Escolha outra.')
+    if (jaDada) {
+      throw new Error(
+        `Esta aula já foi registrada no turno da ${periodo === 'manha' ? 'manhã' : 'tarde'} neste ciclo.`,
+      )
+    }
     if (fotos.length > MAX_FOTOS) throw new Error(`Máximo de ${MAX_FOTOS} fotos`)
     for (const f of fotos) {
       if (!f.type.startsWith('image/')) throw new Error(`"${f.name}" não é uma imagem`)
@@ -299,6 +340,7 @@ export const mockPoloApi = {
       id: historicoId,
       polo_id: polo.id,
       numero_aula: dados.numeroAula,
+      periodo,
       ciclo: cicloDaAula,
       professor_nome: professores.join(', '),
       professores_nomes: professores,
@@ -333,10 +375,10 @@ export const mockPoloApi = {
     }
     registrarLogProfessor(db, polo, {
       acao: 'chamada', entidade: 'chamada', entidadeId: historicoId,
-      descricao: `Registrou a chamada da Aula ${dados.numeroAula} (Ciclo ${cicloDaAula}).`,
+      descricao: `Registrou a chamada da Aula ${dados.numeroAula} · ${periodo === 'manha' ? 'Manhã' : 'Tarde'} (Ciclo ${cicloDaAula}).`,
     })
     // Se o professor já enviou fotos junto, isso pode ter fechado o ciclo
-    // (todas as 18 concluídas). Sem fotos, a aula fica pendente.
+    // (as 18 aulas concluídas nos dois turnos). Sem fotos, a aula fica pendente.
     const cicloConcluido = avancarCicloSeCompleto(db, polo)
     saveDB(db)
     return { historicoId, fotosErro: [], cicloConcluido }
@@ -372,7 +414,7 @@ export const mockPoloApi = {
     }
     registrarLogProfessor(db, polo, {
       acao: 'fotos', entidade: 'chamada', entidadeId: historicoId,
-      descricao: `Enviou ${fotos.length} foto${fotos.length === 1 ? '' : 's'} da Aula ${hist.numero_aula} (Ciclo ${hist.ciclo}).`,
+      descricao: `Enviou ${fotos.length} foto${fotos.length === 1 ? '' : 's'} da Aula ${hist.numero_aula} · ${hist.periodo === 'tarde' ? 'Tarde' : 'Manhã'} (Ciclo ${hist.ciclo}).`,
     })
     // Anexar fotos pode ter concluído a última aula pendente do ciclo.
     const cicloConcluido = avancarCicloSeCompleto(db, polo)

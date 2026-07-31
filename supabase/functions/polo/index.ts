@@ -11,6 +11,7 @@
 //   atualizarPresenca   { token, historicoId, alunoId, presente } -> auto-save por aluno
 //   solicitarContato    { token, alunoId, alunoNome, motivo }     -> pedido de contato p/ o admin
 //   sugerirAluno        { token, nome, historicoId? }             -> sugere cadastro de aluno
+//   presencasManha      { token, numeroAula }                     -> quem já veio no turno da manhã
 //
 // Segredo HMAC: lido da tabela `segredos` (chave 'polo_token_secret'), que tem
 // RLS sem policies — só a service role enxerga. Env POLO_TOKEN_SECRET, se
@@ -35,6 +36,14 @@ async function getTokenSecret(): Promise<string> {
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;   // 5 MB por foto
 const MAX_FOTOS = 10;
+
+// Todo polo dá a mesma aula duas vezes no dia, para duas turmas. O ciclo só
+// fecha quando as 18 aulas tiverem chamada concluída nos DOIS turnos.
+type Periodo = "manha" | "tarde";
+const PERIODOS: Periodo[] = ["manha", "tarde"];
+const AULAS_POR_CICLO = 18;
+const CHAMADAS_POR_CICLO = AULAS_POR_CICLO * PERIODOS.length;
+const ehPeriodo = (v: unknown): v is Periodo => PERIODOS.includes(v as Periodo);
 
 // --- Microsoft Graph (fotos no SharePoint) ---------------------------------
 // As fotos das aulas vão para o SharePoint do colégio (biblioteca "Documentos"
@@ -282,11 +291,12 @@ async function acaoDados(token: string) {
       .from("materiais")
       .select("numero_aula, titulo, descricao, arquivo_path")
       .eq("status", "ativo").order("numero_aula"),
-    // Chamadas do ciclo atual do polo. temFotos distingue "pendente de fotos"
-    // (ainda selecionável, pra anexar depois) de "concluída" (bloqueada).
+    // Chamadas do ciclo atual do polo, uma por (aula, período). temFotos
+    // distingue "pendente de fotos" (ainda selecionável, pra anexar depois)
+    // de "concluída" (bloqueada).
     supabase
       .from("historico_aulas")
-      .select("id, numero_aula, fotos_aula(id)")
+      .select("id, numero_aula, periodo, fotos_aula(id)")
       .eq("polo_id", polo.id).eq("ciclo", polo.ciclo_atual),
     // WhatsApp central do colégio (Configurações do admin) — destino das
     // consultas de responsáveis. O contato do polo é apenas informativo.
@@ -296,6 +306,7 @@ async function acaoDados(token: string) {
   ]);
   const chamadas = (historicoRes.data ?? []).map((h: any) => ({
     numeroAula: h.numero_aula,
+    periodo: (h.periodo ?? "manha") as Periodo,
     historicoId: h.id,
     temFotos: (h.fotos_aula?.length ?? 0) > 0,
   }));
@@ -336,13 +347,14 @@ async function acaoObterChamada(token: string, historicoId?: string) {
 
   const { data: hist } = await supabase
     .from("historico_aulas")
-    .select("id, numero_aula, data_hora, professores_nomes, relatorio, presencas(aluno_id, presente)")
+    .select("id, numero_aula, periodo, data_hora, professores_nomes, relatorio, presencas(aluno_id, presente)")
     .eq("id", historicoId).eq("polo_id", polo.id).single();
   if (!hist) return json({ error: "Registro de aula não encontrado" }, 404);
 
   return json({
     historicoId: hist.id,
     numeroAula: hist.numero_aula,
+    periodo: hist.periodo ?? "manha",
     dataAula: String(hist.data_hora).slice(0, 10),
     professoresNomes: hist.professores_nomes ?? [],
     relatorio: hist.relatorio,
@@ -381,19 +393,44 @@ async function acaoAtualizarPresenca(
   return json({ ok: true });
 }
 
-// O ciclo se encerra quando TODAS as 18 aulas estão concluídas (com foto).
-// Se estiver completo, avança o ciclo_atual (libera 1-18 de novo) e retorna true.
+// Quem já marcou presença no turno da MANHÃ desta aula (ciclo atual). A tela
+// da tarde usa isso para separar num bloco à parte quem já veio no dia — o
+// professor só precisa varrer quem ainda falta. Retorna [] se a chamada da
+// manhã ainda não existir.
+async function acaoPresencasManha(token: string, numeroAula?: number) {
+  const polo = await requirePolo(token);
+  if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
+  if (!numeroAula || numeroAula < 1 || numeroAula > AULAS_POR_CICLO) {
+    return json({ error: "Aula inválida" }, 400);
+  }
+
+  const { data: hist } = await supabase
+    .from("historico_aulas")
+    .select("id, presencas(aluno_id, presente)")
+    .eq("polo_id", polo.id).eq("ciclo", polo.ciclo_atual)
+    .eq("numero_aula", numeroAula).eq("periodo", "manha")
+    .maybeSingle();
+
+  const alunoIds = ((hist as any)?.presencas ?? [])
+    .filter((p: any) => p.presente && p.aluno_id)
+    .map((p: any) => p.aluno_id as string);
+  return json({ alunoIds });
+}
+
+// O ciclo se encerra quando TODAS as 18 aulas estão concluídas (com foto) nos
+// DOIS turnos — 36 chamadas. Se estiver completo, avança o ciclo_atual
+// (libera 1-18 de novo, nos dois períodos) e retorna true.
 async function avancarCicloSeCompleto(poloId: string, ciclo: number): Promise<boolean> {
   const { data } = await supabase
     .from("historico_aulas")
-    .select("numero_aula, fotos_aula(id)")
+    .select("numero_aula, periodo, fotos_aula(id)")
     .eq("polo_id", poloId).eq("ciclo", ciclo);
-  const comFotos = new Set(
+  const concluidas = new Set(
     (data ?? [])
       .filter((h: any) => (h.fotos_aula?.length ?? 0) > 0)
-      .map((h: any) => h.numero_aula),
+      .map((h: any) => `${h.numero_aula}:${h.periodo ?? "manha"}`),
   );
-  if (comFotos.size < 18) return false;
+  if (concluidas.size < CHAMADAS_POR_CICLO) return false;
   await supabase.from("polos").update({ ciclo_atual: ciclo + 1 }).eq("id", poloId);
   return true;
 }
@@ -455,7 +492,7 @@ async function acaoFotosExtra(form: FormData) {
 
   const historicoId = String(form.get("historicoId") ?? "");
   const { data: hist } = await supabase
-    .from("historico_aulas").select("id, polo_id, numero_aula, ciclo").eq("id", historicoId).single();
+    .from("historico_aulas").select("id, polo_id, numero_aula, periodo, ciclo").eq("id", historicoId).single();
   if (!hist || hist.polo_id !== polo.id) {
     return json({ error: "Registro de aula não encontrado" }, 404);
   }
@@ -471,7 +508,7 @@ async function acaoFotosExtra(form: FormData) {
   const fotosErro = await uploadFotos(polo.id, hist.id, fotos);
   await registrarLog(polo, {
     acao: "fotos", entidade: "chamada", entidadeId: hist.id,
-    descricao: `Enviou ${fotos.length} foto${fotos.length === 1 ? "" : "s"} da Aula ${hist.numero_aula} (Ciclo ${hist.ciclo}).`,
+    descricao: `Enviou ${fotos.length} foto${fotos.length === 1 ? "" : "s"} da Aula ${hist.numero_aula} · ${hist.periodo === "tarde" ? "Tarde" : "Manhã"} (Ciclo ${hist.ciclo}).`,
   });
   // Anexar fotos pode ter concluído a última aula pendente do ciclo.
   const cicloConcluido = await avancarCicloSeCompleto(polo.id, polo.ciclo_atual);
@@ -484,6 +521,7 @@ async function acaoChamada(form: FormData) {
 
   let dados: {
     numeroAula: number;
+    periodo?: Periodo;      // ausente = 'manha' (compatibilidade)
     professoresNomes?: string[];
     professorNome?: string; // compatibilidade
     dataAula?: string;      // YYYY-MM-DD
@@ -503,20 +541,29 @@ async function acaoChamada(form: FormData) {
     .map((n) => String(n).trim()).filter(Boolean);
   if (!professores.length) return json({ error: "Informe ao menos um professor" }, 400);
 
-  if (!dados.numeroAula || dados.numeroAula < 1 || dados.numeroAula > 18) {
+  if (!dados.numeroAula || dados.numeroAula < 1 || dados.numeroAula > AULAS_POR_CICLO) {
     return json({ error: "Aula inválida" }, 400);
+  }
+  // Sem período (cliente antigo) assume manhã — o turno da tarde é sempre explícito.
+  const periodo: Periodo = ehPeriodo(dados.periodo) ? dados.periodo : "manha";
+  if (dados.periodo !== undefined && !ehPeriodo(dados.periodo)) {
+    return json({ error: "Período inválido" }, 400);
   }
   if (!dados.dataAula || !/^\d{4}-\d{2}-\d{2}$/.test(dados.dataAula)) {
     return json({ error: "Informe a data da aula" }, 400);
   }
   if (!dados.presencas?.length) return json({ error: "Nenhum aluno na chamada" }, 400);
 
-  // Essa aula já foi registrada no ciclo atual do polo?
+  // Essa aula já foi registrada NESTE TURNO do ciclo atual? A mesma aula pode
+  // (e deve) ser dada nos dois períodos — só a repetição no mesmo turno é erro.
   const { count: jaDada } = await supabase
     .from("historico_aulas").select("id", { count: "exact", head: true })
-    .eq("polo_id", polo.id).eq("ciclo", polo.ciclo_atual).eq("numero_aula", dados.numeroAula);
+    .eq("polo_id", polo.id).eq("ciclo", polo.ciclo_atual)
+    .eq("numero_aula", dados.numeroAula).eq("periodo", periodo);
   if ((jaDada ?? 0) > 0) {
-    return json({ error: "Esta aula já foi registrada neste ciclo. Escolha outra." }, 409);
+    return json({
+      error: `Esta aula já foi registrada no turno da ${periodo === "manha" ? "manhã" : "tarde"} neste ciclo.`,
+    }, 409);
   }
 
   // Data da aula ao meio-dia (evita virar o dia por fuso horário)
@@ -541,6 +588,7 @@ async function acaoChamada(form: FormData) {
     .insert({
       polo_id: polo.id,
       numero_aula: dados.numeroAula,
+      periodo,
       ciclo: polo.ciclo_atual,
       professor_nome: professores.join(", "),
       professores_nomes: professores,
@@ -576,7 +624,7 @@ async function acaoChamada(form: FormData) {
 
   await registrarLog(polo, {
     acao: "chamada", entidade: "chamada", entidadeId: hist.id,
-    descricao: `Registrou a chamada da Aula ${dados.numeroAula} (Ciclo ${polo.ciclo_atual}).`,
+    descricao: `Registrou a chamada da Aula ${dados.numeroAula} · ${periodo === "manha" ? "Manhã" : "Tarde"} (Ciclo ${polo.ciclo_atual}).`,
   });
 
   const fotosErro = await uploadFotos(polo.id, hist.id, fotos);
@@ -612,6 +660,8 @@ Deno.serve(async (req) => {
         return await acaoSugerirAluno(body.token, body.nome, body.historicoId);
       case "obterChamada":
         return await acaoObterChamada(body.token, body.historicoId);
+      case "presencasManha":
+        return await acaoPresencasManha(body.token, body.numeroAula);
       case "atualizarPresenca":
         return await acaoAtualizarPresenca(body.token, body.historicoId, body.alunoId, body.presente);
       default:      return json({ error: "Ação desconhecida" }, 400);

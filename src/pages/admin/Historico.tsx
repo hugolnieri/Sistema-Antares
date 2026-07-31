@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Field } from '../../components/ui'
-import { fmtDataHora } from '../../lib/format'
+import { fmtDataHora, rotuloAula, rotuloPeriodo } from '../../lib/format'
+import { AULAS_POR_CICLO } from '../../lib/types'
 import type { Aluno, HistoricoAula, Polo } from '../../lib/types'
 
 export default function Historico() {
@@ -20,13 +21,14 @@ export default function Historico() {
   const [filtroData, setFiltroData] = useState('')
   const [filtroAluno, setFiltroAluno] = useState('')
   const [filtroFotos, setFiltroFotos] = useState('')
+  const [filtroPeriodo, setFiltroPeriodo] = useState('')
 
   const carregar = useCallback(async () => {
     setLoading(true)
     setErro(null)
     const [histRes, polosRes, alunosRes] = await Promise.all([
       supabase.from('historico_aulas')
-        .select('id, polo_id, numero_aula, ciclo, professor_nome, data_hora, criado_por, polos(nome), presencas(aluno_id, presente), fotos_aula(id)')
+        .select('id, polo_id, numero_aula, ciclo, periodo, professor_nome, data_hora, criado_por, polos(nome), presencas(aluno_id, presente), fotos_aula(id)')
         .order('data_hora', { ascending: false })
         .limit(500),
       supabase.from('polos').select('id, nome').order('nome'),
@@ -44,6 +46,7 @@ export default function Historico() {
   const linhas = registros.filter((h) => {
     if (filtroPolo && h.polo_id !== filtroPolo) return false
     if (filtroAula && h.numero_aula !== Number(filtroAula)) return false
+    if (filtroPeriodo && h.periodo !== filtroPeriodo) return false
     if (filtroData && !h.data_hora.startsWith(filtroData)) return false
     if (filtroAluno && !(h.presencas ?? []).some((p) => p.aluno_id === filtroAluno)) return false
     if (filtroFotos === 'com' && !(h.fotos_aula ?? []).length) return false
@@ -59,7 +62,7 @@ export default function Historico() {
     { key: 'polo', header: 'Polo', render: (h) => h.polos?.nome ?? '—' },
     {
       key: 'numero_aula', header: 'Aula', sortable: true,
-      render: (h) => `Aula ${h.numero_aula} · Ciclo ${h.ciclo}`,
+      render: (h) => rotuloAula(h.numero_aula, h.ciclo, h.periodo),
     },
     { key: 'professor_nome', header: 'Professor', sortable: true },
     {
@@ -94,7 +97,7 @@ export default function Historico() {
       error={erro}
       onRetry={carregar}
       onRowClick={(h) => navigate(`/admin/historico/${h.id}`)}
-      searchValue={(h) => `${h.polos?.nome ?? ''} ${h.professor_nome} aula ${h.numero_aula} ciclo ${h.ciclo}`}
+      searchValue={(h) => `${h.polos?.nome ?? ''} ${h.professor_nome} aula ${h.numero_aula} ciclo ${h.ciclo} ${rotuloPeriodo(h.periodo)}`}
       searchPlaceholder="Buscar por polo ou professor…"
       filters={
         <>
@@ -109,9 +112,16 @@ export default function Historico() {
           <Field label="Aula">
             <select value={filtroAula} onChange={(e) => setFiltroAula(e.target.value)}>
               <option value="">Todas</option>
-              {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => (
+              {Array.from({ length: AULAS_POR_CICLO }, (_, i) => i + 1).map((n) => (
                 <option key={n} value={n}>Aula {n}</option>
               ))}
+            </select>
+          </Field>
+          <Field label="Turno">
+            <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value)}>
+              <option value="">Todos</option>
+              <option value="manha">Manhã</option>
+              <option value="tarde">Tarde</option>
             </select>
           </Field>
           <Field label="Data">

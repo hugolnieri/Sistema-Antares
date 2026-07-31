@@ -14,6 +14,24 @@ export const fmtDataHora = (iso: string | null | undefined): string => {
   })}`
 }
 
+// Rótulo do turno da chamada. Registros anteriores ao suporte a dois turnos
+// não têm período gravado — nesses casos não inventa um valor.
+export const rotuloPeriodo = (p: string | null | undefined): string =>
+  p === 'manha' ? 'Manhã' : p === 'tarde' ? 'Tarde' : '—'
+
+// "Aula 5 · Ciclo 2 · Manhã" — usado nas listagens do admin, onde o mesmo
+// número de aula se repete entre ciclos e entre turnos.
+export const rotuloAula = (
+  numeroAula: number | null | undefined,
+  ciclo?: number | null,
+  periodo?: string | null,
+): string =>
+  [
+    numeroAula != null ? `Aula ${numeroAula}` : null,
+    ciclo != null ? `Ciclo ${ciclo}` : null,
+    periodo ? rotuloPeriodo(periodo) : null,
+  ].filter(Boolean).join(' · ') || '—'
+
 export const gerarSlug = (nome: string): string =>
   nome
     .toLowerCase()

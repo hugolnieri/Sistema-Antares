@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Field, Modal, EmptyState } from '../../components/ui'
-import { fmtData, fmtDataHora } from '../../lib/format'
+import { fmtData, fmtDataHora, rotuloAula } from '../../lib/format'
 import { resolverUrlsFotos } from '../../lib/fotos'
 import type { Polo } from '../../lib/types'
 
@@ -17,6 +17,7 @@ interface FotoGaleria {
   historico_aulas?: {
     numero_aula: number
     ciclo: number
+    periodo: string
     data_hora: string
     professor_nome: string
     polos?: { nome: string } | null
@@ -44,7 +45,7 @@ export default function GaleriaFotos() {
     setErro(null)
     const [fotosRes, polosRes] = await Promise.all([
       supabase.from('fotos_aula')
-        .select('id, arquivo_path, url_externa, nome_arquivo, created_at, polo_id, historico_id, historico_aulas(numero_aula, ciclo, data_hora, professor_nome, polos(nome))')
+        .select('id, arquivo_path, url_externa, nome_arquivo, created_at, polo_id, historico_id, historico_aulas(numero_aula, ciclo, periodo, data_hora, professor_nome, polos(nome))')
         .order('created_at', { ascending: false })
         .limit(1000),
       supabase.from('polos').select('id, nome').order('nome'),
@@ -80,7 +81,7 @@ export default function GaleriaFotos() {
 
   const legenda = (f: FotoComUrl) => {
     const h = f.historico_aulas
-    const partes = [h?.polos?.nome, h ? `Aula ${h.numero_aula} · Ciclo ${h.ciclo}` : null]
+    const partes = [h?.polos?.nome, h ? rotuloAula(h.numero_aula, h.ciclo, h.periodo) : null]
     return partes.filter(Boolean).join(' · ')
   }
 
@@ -174,7 +175,7 @@ export default function GaleriaFotos() {
                 </span>
                 <span className="text-[11px] text-[var(--c-text-soft)]">
                   {f.historico_aulas
-                    ? `Aula ${f.historico_aulas.numero_aula} · Ciclo ${f.historico_aulas.ciclo}`
+                    ? rotuloAula(f.historico_aulas.numero_aula, f.historico_aulas.ciclo, f.historico_aulas.periodo)
                     : '—'}
                   {f.historico_aulas?.data_hora ? ` · ${fmtData(f.historico_aulas.data_hora)}` : ''}
                 </span>

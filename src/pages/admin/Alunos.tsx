@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { DataTable, type Column } from '../../components/DataTable'
 import { Drawer, Field, Modal, ConfirmModal, StatusBadge, EmptyState } from '../../components/ui'
 import { useToast } from '../../components/Toast'
-import { fmtData, fmtDataHora } from '../../lib/format'
+import { fmtData, fmtDataHora, rotuloAula } from '../../lib/format'
 import { baixarModeloAlunos, lerPlanilhaAlunos, type LinhaPlanilhaAlunos } from '../../lib/planilhaAlunos'
 import { registrarLog } from '../../lib/logs'
 import { usePermissoes } from '../../lib/permissoes'
@@ -19,7 +19,7 @@ interface VinculoResp { responsavel_id: string; parentesco: string }
 interface PresencaHist {
   id: string
   presente: boolean
-  historico_aulas?: { numero_aula: number; ciclo: number; data_hora: string; polos?: { nome: string } | null } | null
+  historico_aulas?: { numero_aula: number; ciclo: number; periodo: string; data_hora: string; polos?: { nome: string } | null } | null
 }
 interface LinhaImportPreview extends LinhaPlanilhaAlunos {
   linha: number
@@ -246,7 +246,7 @@ export default function Alunos() {
     setPresencasAluno(null)
     const { data } = await supabase
       .from('presencas')
-      .select('id, presente, historico_aulas(numero_aula, ciclo, data_hora, polos(nome))')
+      .select('id, presente, historico_aulas(numero_aula, ciclo, periodo, data_hora, polos(nome))')
       .eq('aluno_id', a.id)
       .order('id', { ascending: false })
       .limit(50)
@@ -595,8 +595,11 @@ export default function Alunos() {
               {presencasAluno.map((p) => (
                 <tr key={p.id}>
                   <td>
-                    Aula {p.historico_aulas?.numero_aula ?? '—'}
-                    {p.historico_aulas && ` · Ciclo ${p.historico_aulas.ciclo}`}
+                    {rotuloAula(
+                      p.historico_aulas?.numero_aula,
+                      p.historico_aulas?.ciclo,
+                      p.historico_aulas?.periodo,
+                    )}
                   </td>
                   <td>{p.historico_aulas?.polos?.nome ?? '—'}</td>
                   <td>{fmtDataHora(p.historico_aulas?.data_hora)}</td>

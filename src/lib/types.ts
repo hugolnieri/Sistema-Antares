@@ -153,11 +153,21 @@ export interface LogEntry {
   descricao: string
 }
 
+// Todo polo dá a mesma aula duas vezes no dia, para duas turmas diferentes.
+// O período faz parte da identidade da chamada: Aula N do ciclo M acontece
+// uma vez de manhã e uma vez à tarde.
+export type Periodo = 'manha' | 'tarde'
+
+// Quantas chamadas fecham um ciclo: as 18 aulas nos dois períodos.
+export const AULAS_POR_CICLO = 18
+export const CHAMADAS_POR_CICLO = AULAS_POR_CICLO * 2
+
 export interface HistoricoAula {
   id: string
   polo_id: string
   numero_aula: number
   ciclo: number
+  periodo: Periodo
   professor_nome: string
   professores_nomes: string[]
   data_hora: string
@@ -215,17 +225,20 @@ export interface MaterialChamada {
 export interface ChamadaDetalhe {
   historicoId: string
   numeroAula: number
+  periodo: Periodo
   dataAula: string // YYYY-MM-DD
   professoresNomes: string[]
   relatorio: string | null
   presencas: { alunoId: string; presente: boolean }[]
 }
 
-// Uma chamada já registrada no ciclo atual do polo.
+// Uma chamada já registrada no ciclo atual do polo, identificada por
+// aula + período (a mesma aula é dada nos dois turnos).
 // - temFotos = false -> pendente: continua selecionável para anexar fotos depois
 // - temFotos = true  -> concluída: bloqueada no seletor
 export interface ChamadaExistente {
   numeroAula: number
+  periodo: Periodo
   historicoId: string
   temFotos: boolean
 }

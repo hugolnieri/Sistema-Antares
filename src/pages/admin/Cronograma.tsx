@@ -5,7 +5,7 @@ import { DataTable, type Column } from '../../components/DataTable'
 import { CalendarMonth, type CalendarItem } from '../../components/CalendarMonth'
 import { Drawer, Field, ConfirmModal, Modal, StatusBadge } from '../../components/ui'
 import { useToast } from '../../components/Toast'
-import { fmtData, subtrairDias, adicionarDias, hojeISO, proximaSegunda, linkWhatsAppTexto, linkWhatsApp } from '../../lib/format'
+import { fmtData, subtrairDias, adicionarDias, hojeISO, proximaSegunda, linkWhatsAppTexto, linkWhatsApp, rotuloPeriodo } from '../../lib/format'
 import { statusDe } from '../../lib/status'
 import { registrarLog } from '../../lib/logs'
 import { usePermissoes } from '../../lib/permissoes'
@@ -78,7 +78,7 @@ export default function Cronograma() {
         .select('*, polos(nome), professores(nome), cronograma_professores(id, cronograma_id, professor_id, professor_nome, token, status, respondido_em, professores(nome, contato))')
         .order('data', { ascending: true }),
       supabase.from('historico_aulas')
-        .select('id, polo_id, numero_aula, professor_nome, data_hora, polos(nome)')
+        .select('id, polo_id, numero_aula, periodo, professor_nome, data_hora, polos(nome)')
         .order('data_hora', { ascending: false }),
       supabase.from('polos').select('id, nome').eq('status', 'ativo').order('nome'),
       supabase.from('professores').select('id, nome, contato').eq('status', 'ativo').order('nome'),
@@ -282,7 +282,7 @@ export default function Cronograma() {
       .map((h): CalendarItem => ({
         id: `hist-${h.id}`,
         data: h.data_hora,
-        titulo: `Aula ${h.numero_aula} realizada · ${h.polos?.nome ?? ''}`,
+        titulo: `Aula ${h.numero_aula} (${rotuloPeriodo(h.periodo)}) realizada · ${h.polos?.nome ?? ''}`,
         color: 'green',
         icon: '✓',
         onClick: () => navigate(`/admin/historico/${h.id}`),

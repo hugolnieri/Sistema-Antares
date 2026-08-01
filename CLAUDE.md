@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-07-31** — feat: dois turnos por dia na chamada (manha/tarde) (d09649b)
 - **2026-07-15** — feat: multiplos professores por aula + confirmacao de presenca via WhatsApp (f2862f8)
 - **2026-07-15** — fix: remove token_version do SELECT de Polos (coluna sem privilegio) (52976c6)
 - **2026-07-15** — Integracao Microsoft Graph: fotos das aulas no SharePoint do cliente (4c7dec6)
 - **2026-07-14** — chore: ignora .vercel e .env.local (vercel link) (75ef6b3)
-- **2026-07-14** — chore: redeploy com variaveis do Supabase na Vercel (1a11682)
 
 (Updated automatically by git post-commit hook)
 

@@ -9,6 +9,7 @@
 //   chamada FormData: token, dados(JSON), fotos[] -> { historicoId }
 //   obterChamada        { token, historicoId }                    -> retoma chamada pendente
 //   atualizarPresenca   { token, historicoId, alunoId, presente } -> auto-save por aluno
+//   atualizarRelatorio  { token, historicoId, relatorio }         -> auto-save do relatório
 //   solicitarContato    { token, alunoId, alunoNome, motivo }     -> pedido de contato p/ o admin
 //   sugerirAluno        { token, nome, historicoId? }             -> sugere cadastro de aluno
 //   presencasManha      { token, numeroAula }                     -> quem já veio no turno da manhã
@@ -36,6 +37,7 @@ async function getTokenSecret(): Promise<string> {
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;   // 5 MB por foto
 const MAX_FOTOS = 10;
+const MAX_RELATORIO = 5000;               // caracteres do relatório da aula
 
 // Todo polo dá a mesma aula duas vezes no dia, para duas turmas. O ciclo só
 // fecha quando as 18 aulas tiverem chamada concluída nos DOIS turnos.
@@ -393,6 +395,30 @@ async function acaoAtualizarPresenca(
   return json({ ok: true });
 }
 
+// Atualiza o relatório de uma chamada já criada. Diferente de data e
+// professores (gravados de uma vez), o relatório pode ser escrito e reescrito
+// a qualquer momento até as fotos concluírem a aula — o professor costuma
+// anotar durante a aula, não antes de marcar a primeira presença.
+async function acaoAtualizarRelatorio(
+  token: string, historicoId?: string, relatorio?: string,
+) {
+  const polo = await requirePolo(token);
+  if (!polo) return json({ error: "Sessão expirada. Digite a senha novamente." }, 401);
+  if (!historicoId) return json({ error: "Registro de aula não encontrado" }, 404);
+
+  const { data: hist } = await supabase
+    .from("historico_aulas").select("id, polo_id").eq("id", historicoId).single();
+  if (!hist || hist.polo_id !== polo.id) {
+    return json({ error: "Registro de aula não encontrado" }, 404);
+  }
+
+  const texto = String(relatorio ?? "").trim().slice(0, MAX_RELATORIO);
+  const { error } = await supabase
+    .from("historico_aulas").update({ relatorio: texto || null }).eq("id", historicoId);
+  if (error) return json({ error: "Erro ao salvar o relatório" }, 500);
+  return json({ ok: true });
+}
+
 // Quem já marcou presença no turno da MANHÃ desta aula (ciclo atual). A tela
 // da tarde usa isso para separar num bloco à parte quem já veio no dia — o
 // professor só precisa varrer quem ainda falta. Retorna [] se a chamada da
@@ -664,6 +690,8 @@ Deno.serve(async (req) => {
         return await acaoPresencasManha(body.token, body.numeroAula);
       case "atualizarPresenca":
         return await acaoAtualizarPresenca(body.token, body.historicoId, body.alunoId, body.presente);
+      case "atualizarRelatorio":
+        return await acaoAtualizarRelatorio(body.token, body.historicoId, body.relatorio);
       default:      return json({ error: "Ação desconhecida" }, 400);
     }
   } catch (e) {

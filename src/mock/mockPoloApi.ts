@@ -10,6 +10,7 @@ import type { ChamadaDetalhe, DadosPolo, Periodo, PoloSessao } from '../lib/type
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const MAX_FOTO_BYTES = 5 * 1024 * 1024
 const MAX_FOTOS = 10
+const MAX_RELATORIO = 5000
 
 // Fotos pequenas viram data URL (sobrevivem ao reload); grandes usam URL
 // temporária para não estourar a cota do localStorage no modo demo.
@@ -226,6 +227,26 @@ export const mockPoloApi = {
       relatorio: hist.relatorio,
       presencas,
     }
+  },
+
+  // Atualiza o relatório de uma chamada já criada. Diferente de data e
+  // professores (gravados de uma vez), o relatório pode ser escrito e reescrito
+  // a qualquer momento até as fotos concluírem a aula.
+  async atualizarRelatorio(
+    token: string, historicoId: string, relatorio: string,
+  ): Promise<{ ok: boolean }> {
+    await sleep(200)
+    const db = loadDB()
+    const [poloId, tv] = token.split('.')
+    const polo = db.polos.find((p) => p.id === poloId)
+    if (!polo || polo.status !== 'ativo' || String(polo.token_version) !== tv) {
+      throw new Error('Sessão expirada. Digite a senha novamente.')
+    }
+    const hist = db.historico_aulas.find((h) => h.id === historicoId && h.polo_id === polo.id)
+    if (!hist) throw new Error('Registro de aula não encontrado')
+    hist.relatorio = (relatorio ?? '').trim().slice(0, MAX_RELATORIO) || null
+    saveDB(db)
+    return { ok: true }
   },
 
   // Quem já marcou presença no turno da MANHÃ desta aula (ciclo atual). A tela

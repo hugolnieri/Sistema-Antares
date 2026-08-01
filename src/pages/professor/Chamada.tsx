@@ -35,6 +35,14 @@ export default function Chamada() {
   const [professores, setProfessores] = useState<string[]>(['', ''])
   const [presencas, setPresencas] = useState<Record<string, boolean>>({})
   const [relatorio, setRelatorio] = useState('')
+  // O relatório é escrito DURANTE a aula, então continua editável mesmo depois
+  // que a chamada existe (ao contrário de data e professores). Salva sozinho
+  // ~1s depois da última tecla e no blur; a ref guarda o último texto já
+  // gravado para não repetir requisição à toa.
+  const [salvandoRelatorio, setSalvandoRelatorio] = useState(false)
+  const [relatorioSalvo, setRelatorioSalvo] = useState(false)
+  const relatorioTimer = useRef<number | null>(null)
+  const relatorioGravado = useRef('')
   const [fotos, setFotos] = useState<File[]>([])
   // Na chamada da TARDE: quem já marcou presença no turno da manhã desta
   // mesma aula. Esses alunos saem da lista principal e vão para um bloco
@@ -102,12 +110,67 @@ export default function Chamada() {
 
   const professoresPreenchidos = professores.map((p) => p.trim()).filter(Boolean)
 
+  const cancelarSalvarRelatorio = () => {
+    if (relatorioTimer.current !== null) {
+      window.clearTimeout(relatorioTimer.current)
+      relatorioTimer.current = null
+    }
+  }
+
+  // Grava o relatório se ele mudou desde a última gravação. Antes de a chamada
+  // existir não há o que salvar: o texto vai junto na criação (1º toggle).
+  const salvarRelatorio = async (texto: string) => {
+    cancelarSalvarRelatorio()
+    const limpo = texto.trim()
+    if (!historicoId || limpo === relatorioGravado.current) return
+    setSalvandoRelatorio(true)
+    try {
+      await poloApi.atualizarRelatorio(token, historicoId, limpo)
+      relatorioGravado.current = limpo
+      setRelatorioSalvo(true)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao salvar o relatório.')
+    } finally {
+      setSalvandoRelatorio(false)
+    }
+  }
+
+  const mudarRelatorio = (texto: string) => {
+    setRelatorio(texto)
+    setRelatorioSalvo(false)
+    if (!historicoId) return
+    cancelarSalvarRelatorio()
+    relatorioTimer.current = window.setTimeout(() => salvarRelatorio(texto), 1000)
+  }
+
+  // O cleanup de desmontagem roda uma vez só e enxergaria valores velhos —
+  // estas refs mantêm o que ele precisa atualizado.
+  const relatorioAtual = useRef('')
+  const historicoIdAtual = useRef<string | null>(null)
+  useEffect(() => { relatorioAtual.current = relatorio }, [relatorio])
+  useEffect(() => { historicoIdAtual.current = historicoId }, [historicoId])
+
+  // Sair da tela com digitação ainda pendente não pode perder o texto: dispara
+  // a gravação na saída, sem esperar a resposta.
+  useEffect(() => () => {
+    if (relatorioTimer.current === null) return
+    window.clearTimeout(relatorioTimer.current)
+    const texto = relatorioAtual.current.trim()
+    const id = historicoIdAtual.current
+    if (id && texto !== relatorioGravado.current) {
+      poloApi.atualizarRelatorio(token, id, texto).catch(() => {})
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const limparFormulario = () => {
     setHistoricoId(null)
     setDataAula(hoje)
     setProfessores(['', ''])
     setPresencas({})
     setRelatorio('')
+    cancelarSalvarRelatorio()
+    relatorioGravado.current = ''
+    setRelatorioSalvo(false)
     setFotos([])
     setSugeridos([])
     setNovoExtra('')
@@ -172,6 +235,8 @@ export default function Chamada() {
       setProfessores(['', ''])
       setPresencas({})
       setRelatorio('')
+      relatorioGravado.current = ''
+      setRelatorioSalvo(false)
       setSugeridos([])
       return
     }
@@ -183,6 +248,8 @@ export default function Chamada() {
       setDataAula(c.dataAula)
       setProfessores(c.professoresNomes.length ? c.professoresNomes : ['', ''])
       setRelatorio(c.relatorio ?? '')
+      relatorioGravado.current = (c.relatorio ?? '').trim()
+      setRelatorioSalvo(false)
       setSugeridos([])
       const marcados: Record<string, boolean> = {}
       for (const pr of c.presencas) if (pr.presente) marcados[pr.alunoId] = true
@@ -276,6 +343,9 @@ export default function Chamada() {
           presencas: lista,
         }, [])
         setHistoricoId(r.historicoId)
+        // O relatório foi junto na criação — marca como gravado para o
+        // auto-save não repetir o mesmo texto na primeira digitação.
+        relatorioGravado.current = relatorio.trim()
         recarregar() // atualiza a lista de chamadas (a aula vira "pendente de fotos")
         toast.success('Chamada iniciada — a presença é salva automaticamente.')
       } catch (e: any) {
@@ -448,8 +518,8 @@ export default function Chamada() {
           {chamadaIniciada && (
             <p className="rounded-lg bg-[var(--c-blue-bg)] p-3 text-xs text-[var(--c-blue-fg)]">
               ✓ Aula {numeroAula} · {rotuloTurno} iniciada — cada presença confirmada é salva
-              na hora. Pode fechar o link e voltar depois: nada se perde. Data, professor e
-              relatório já foram gravados e não podem mais ser alterados.
+              na hora. Pode fechar o link e voltar depois: nada se perde. Data e professor
+              já foram gravados e não mudam mais; o relatório você ajusta até enviar as fotos.
             </p>
           )}
 
@@ -596,13 +666,25 @@ export default function Chamada() {
             )}
           </div>
 
-          {/* Relatório da aula */}
-          <div className="card flex flex-col gap-4">
+          {/* Relatório/observações da aula. Ao contrário de data e professores,
+              continua editável enquanto a aula não é concluída — o professor
+              escreve durante a aula. Salva sozinho ao parar de digitar. */}
+          <div className="card flex flex-col gap-2">
             <Field label="Relatório da aula">
-              <textarea rows={4} value={relatorio} disabled={camposTravados}
-                        placeholder="Como foi a aula? O que foi trabalhado?"
-                        onChange={(e) => setRelatorio(e.target.value)} />
+              <textarea rows={4} value={relatorio}
+                        placeholder="Como foi a aula? O que foi trabalhado? Observações sobre os alunos…"
+                        onChange={(e) => mudarRelatorio(e.target.value)}
+                        onBlur={(e) => salvarRelatorio(e.target.value)} />
             </Field>
+            <p className="text-xs text-[var(--c-text-soft)]">
+              {!chamadaIniciada
+                ? 'Pode escrever agora ou a qualquer momento durante a aula.'
+                : salvandoRelatorio
+                  ? 'Salvando…'
+                  : relatorioSalvo
+                    ? '✓ Salvo automaticamente.'
+                    : 'Escreva a qualquer momento até enviar as fotos — salva sozinho.'}
+            </p>
           </div>
 
           {/* Fotos — só existe depois que a chamada foi criada (1º toggle) */}

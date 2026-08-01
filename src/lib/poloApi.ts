@@ -54,6 +54,11 @@ const realPoloApi = {
   atualizarPresenca: (token: string, historicoId: string, alunoId: string, presente: boolean) =>
     post({ action: 'atualizarPresenca', token, historicoId, alunoId, presente }) as Promise<{ ok: boolean }>,
 
+  // Salva o relatório de uma chamada já criada. O professor escreve durante a
+  // aula, então o campo continua editável até as fotos concluírem a aula.
+  atualizarRelatorio: (token: string, historicoId: string, relatorio: string) =>
+    post({ action: 'atualizarRelatorio', token, historicoId, relatorio }) as Promise<{ ok: boolean }>,
+
   async salvarChamada(
     token: string,
     dados: {

@@ -185,11 +185,11 @@ src/
 
 ## Recent Commits
 
+- **2026-08-06** — chore: update recent commits in CLAUDE.md (853c156)
 - **2026-08-06** — Chamada: busca de aluno, lista recolhida e consulta de responsavel de volta (e8f1280)
 - **2026-08-06** — chore: update recent commits in CLAUDE.md (8433e6b)
 - **2026-08-06** — Materiais no SharePoint + miniaturas na galeria (tira peso do Supabase) (c2dc551)
 - **2026-07-31** — fix: relatorio da aula editavel durante toda a chamada (8cb2eb6)
-- **2026-07-31** — feat: dois turnos por dia na chamada (manha/tarde) (d09649b)
 
 (Updated automatically by git post-commit hook)
 

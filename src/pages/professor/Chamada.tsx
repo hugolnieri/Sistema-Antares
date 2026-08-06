@@ -66,7 +66,11 @@ export default function Chamada() {
   // Aluno cuja presença está em voo (chamada já existe) — só aquele botão trava.
   const [pendentes, setPendentes] = useState<Set<string>>(new Set())
   const [enviandoFotos, setEnviandoFotos] = useState(false)
-  const fileInput = useRef<HTMLInputElement>(null)
+  // Dois campos de arquivo: um força a câmera (capture), o outro abre a galeria.
+  // Com um só, o celular decide sozinho e o professor fica sem a foto que já
+  // tirou antes — nem sempre ele fotografa dentro do sistema.
+  const fileCamera = useRef<HTMLInputElement>(null)
+  const fileGaleria = useRef<HTMLInputElement>(null)
 
   // Aluno selecionado para consulta de responsáveis (abre o popup de motivo).
   const [consultaAluno, setConsultaAluno] = useState<{ id: string; nome: string } | null>(null)
@@ -320,7 +324,9 @@ export default function Chamada() {
       }
       return total
     })
-    if (fileInput.current) fileInput.current.value = ''
+    // Zera os dois: sem isso, escolher o MESMO arquivo de novo não dispara change.
+    if (fileCamera.current) fileCamera.current.value = ''
+    if (fileGaleria.current) fileGaleria.current.value = ''
   }
 
   // Confirmar/desmarcar presença salva na hora — não existe mais botão de
@@ -427,10 +433,17 @@ export default function Chamada() {
 
   // Durante a busca a divisão manhã/tarde some: o professor quer achar UM nome,
   // não navegar por blocos. A comparação ignora acento e maiúsculas.
+  //
+  // Casa pelo INÍCIO de qualquer parte do nome, não por trecho solto: digitar
+  // "a" traz quem começa com A, e não todo mundo que tem um "a" no meio. Vale
+  // para cada palavra, então o sobrenome também encontra ("ramos" acha
+  // "Cecília Ramos") — é assim que a agenda do celular se comporta.
   const buscaAtiva = busca.trim().length > 0
   const termoBusca = normalizarBusca(busca)
   const alunosEncontrados = buscaAtiva
-    ? dados.alunos.filter((a) => normalizarBusca(a.nome).includes(termoBusca))
+    ? dados.alunos.filter((a) =>
+        normalizarBusca(a.nome).split(/\s+/).some((parte) => parte.startsWith(termoBusca)),
+      )
     : []
   // Quem já está marcado — vira resumo enquanto a lista fica recolhida.
   const presentesLista = dados.alunos.filter((a) => presencas[a.id])
@@ -635,6 +648,20 @@ export default function Chamada() {
                   </div>
                 </div>
 
+                {/* Recolher também aqui em cima: com a lista aberta, o botão do
+                    fim fica a uma turma inteira de distância. */}
+                {listaAberta && !buscaAtiva && (
+                  <div className="flex items-center justify-between gap-2 border-t border-[var(--c-border)] px-4 py-2">
+                    <span className="text-xs text-[var(--c-text-soft)]">
+                      Mostrando todos os {dados.alunos.length} alunos
+                    </span>
+                    <button className="btn btn-ghost !py-1.5 !text-sm"
+                            onClick={() => setListaAberta(false)}>
+                      Recolher ▲
+                    </button>
+                  </div>
+                )}
+
                 {/* Buscando: uma lista só, com todos os que casam. */}
                 {buscaAtiva ? (
                   alunosEncontrados.length === 0 ? (
@@ -798,14 +825,25 @@ export default function Chamada() {
                 A aula é <strong>concluída</strong> quando você envia as fotos.
               </p>
               <input
-                ref={fileInput}
+                ref={fileCamera}
                 type="file" accept="image/*" multiple capture="environment"
-                className="hidden" id="fotos-input"
+                className="hidden" id="fotos-camera"
                 onChange={(e) => adicionarFotos(e.target.files)}
               />
-              <label htmlFor="fotos-input" className="btn btn-ghost btn-lg cursor-pointer">
-                📷 Adicionar fotos
-              </label>
+              <input
+                ref={fileGaleria}
+                type="file" accept="image/*" multiple
+                className="hidden" id="fotos-galeria"
+                onChange={(e) => adicionarFotos(e.target.files)}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <label htmlFor="fotos-camera" className="btn btn-ghost btn-lg cursor-pointer">
+                  📷 Tirar foto
+                </label>
+                <label htmlFor="fotos-galeria" className="btn btn-ghost btn-lg cursor-pointer">
+                  🖼️ Da galeria
+                </label>
+              </div>
               <p className="text-xs text-[var(--c-text-soft)]">
                 Apenas imagens, até 5 MB cada, máximo de {MAX_FOTOS} fotos.
               </p>

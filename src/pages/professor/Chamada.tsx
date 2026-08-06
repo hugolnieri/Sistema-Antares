@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { poloApi } from '../../lib/poloApi'
-import { linkWhatsApp } from '../../lib/format'
+import { linkWhatsApp, normalizarBusca } from '../../lib/format'
 import { AULAS_POR_CICLO } from '../../lib/types'
 import type { AlunoChamada, Periodo } from '../../lib/types'
 import { Field, EmptyState, Modal } from '../../components/ui'
@@ -49,6 +49,11 @@ export default function Chamada() {
   // recolhido no fim — ainda dá para marcar (aluno que vem nos dois turnos).
   const [presentesManha, setPresentesManha] = useState<Set<string>>(new Set())
   const [manhaAberta, setManhaAberta] = useState(false)
+  // A lista começa recolhida: numa turma grande, rolar dezenas de nomes atrás
+  // de um aluno é onde o professor se perde. Buscar pelo nome abre a lista
+  // sozinho e mostra só quem interessa.
+  const [busca, setBusca] = useState('')
+  const [listaAberta, setListaAberta] = useState(false)
   // Sugestões de aluno enviadas nesta sessão (só para exibir "✓ enviado").
   // O envio é imediato (poloApi.sugerirAluno), funciona antes e depois da chamada.
   const [sugeridos, setSugeridos] = useState<string[]>([])
@@ -85,23 +90,33 @@ export default function Chamada() {
     setConsultaAluno({ id: alunoId, nome: alunoNome })
   }
 
-  // Confirma o popup: abre o WhatsApp com o motivo na mensagem e registra o
-  // pedido no admin (o motivo some junto no painel).
-  const confirmarConsultaResponsaveis = () => {
+  // Confirma o popup. O pedido SEMPRE vira pendência no painel do admin — é
+  // esse o caminho garantido. O WhatsApp é um atalho a mais, e só existe se o
+  // administrativo tiver cadastrado o número central em Configurações.
+  const confirmarConsultaResponsaveis = async () => {
     if (!consultaAluno) return
     const motivo = motivoConsulta.trim()
     if (!motivo) {
       toast.error('Informe o motivo da consulta.')
       return
     }
-    if (dados.contatoAntares) {
-      window.open(linkWhatsApp(dados.contatoAntares, mensagemConsultaResponsavel(consultaAluno.nome, motivo)), '_blank')
-    }
     setEnviandoConsulta(true)
-    poloApi.solicitarContato(token, consultaAluno.id, consultaAluno.nome, motivo)
-      .catch(() => {})
-      .finally(() => setEnviandoConsulta(false))
-    toast.info('O administrativo foi avisado do seu pedido de contato.')
+    try {
+      await poloApi.solicitarContato(token, consultaAluno.id, consultaAluno.nome, motivo)
+    } catch {
+      // Sem registro no painel o pedido se perde, então o professor precisa saber.
+      setEnviandoConsulta(false)
+      toast.error('Não foi possível enviar o pedido. Tente de novo.')
+      return
+    }
+    setEnviandoConsulta(false)
+    if (dados.contatoAntares) {
+      window.open(
+        linkWhatsApp(dados.contatoAntares, mensagemConsultaResponsavel(consultaAluno.nome, motivo)),
+        '_blank',
+      )
+    }
+    toast.info(`Pedido de contato de ${consultaAluno.nome} enviado ao administrativo.`)
     setConsultaAluno(null)
   }
 
@@ -410,6 +425,16 @@ export default function Chamada() {
     ? dados.alunos.filter((a) => !presentesManha.has(a.id))
     : dados.alunos
 
+  // Durante a busca a divisão manhã/tarde some: o professor quer achar UM nome,
+  // não navegar por blocos. A comparação ignora acento e maiúsculas.
+  const buscaAtiva = busca.trim().length > 0
+  const termoBusca = normalizarBusca(busca)
+  const alunosEncontrados = buscaAtiva
+    ? dados.alunos.filter((a) => normalizarBusca(a.nome).includes(termoBusca))
+    : []
+  // Quem já está marcado — vira resumo enquanto a lista fica recolhida.
+  const presentesLista = dados.alunos.filter((a) => presencas[a.id])
+
   const linhaAluno = (a: AlunoChamada, vindoDaManha = false) => {
     const marcado = presencas[a.id]
     const travado = criandoChamada || pendentes.has(a.id)
@@ -427,14 +452,15 @@ export default function Chamada() {
               <p className="mt-0.5 text-xs text-[var(--c-amber-fg)]">⚠️ {a.observacoes}</p>
             )}
           </div>
-          {dados.contatoAntares && (
-            <button
-              onClick={() => abrirConsultaResponsaveis(a.id, a.nome)}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
-            >
-              💬 Consultar responsáveis
-            </button>
-          )}
+          {/* Sempre disponível: o pedido vira pendência no painel do admin,
+              haja ou não WhatsApp central cadastrado. */}
+          <button
+            onClick={() => abrirConsultaResponsaveis(a.id, a.nome)}
+            aria-label={`Consultar responsável de ${a.nome}`}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--c-border)] px-3 py-1 text-xs font-semibold text-[var(--c-primary)] transition-colors hover:bg-[var(--c-primary-soft)]"
+          >
+            💬 Consultar responsável
+          </button>
         </div>
         <button
           className={`btn w-full !py-2.5 ${marcado
@@ -571,11 +597,8 @@ export default function Chamada() {
           {/* Lista de alunos. Na tarde, quem já veio de manhã fica num bloco
               recolhido no fim — ainda marcável, para quem vem nos dois turnos. */}
           <div className="card !p-0">
-            <div className="flex items-center justify-between p-4">
-              <h2 className="font-bold">
-                Alunos ({alunosPrincipais.length}
-                {separarManha ? ` de ${dados.alunos.length}` : ''})
-              </h2>
+            <div className="flex items-center justify-between p-4 pb-3">
+              <h2 className="font-bold">Alunos ({dados.alunos.length})</h2>
               <span className="text-sm text-[var(--c-text-soft)]">
                 {presentesCount} presente{presentesCount === 1 ? '' : 's'}
               </span>
@@ -587,42 +610,122 @@ export default function Chamada() {
               />
             ) : (
               <>
-                {alunosPrincipais.length === 0 ? (
-                  <p className="border-t border-[var(--c-border)] p-4 text-sm text-[var(--c-text-soft)]">
-                    Todos os alunos do polo já vieram no turno da manhã — abra o bloco abaixo
-                    se algum deles voltou à tarde.
-                  </p>
-                ) : (
-                  <ul className="border-t border-[var(--c-border)]">
-                    {alunosPrincipais.map((a) => linhaAluno(a))}
-                  </ul>
-                )}
-
-                {separarManha && (
-                  <div className="border-t border-[var(--c-border)]">
-                    <button
-                      className="flex w-full items-center justify-between gap-2 p-4 text-left"
-                      onClick={() => setManhaAberta((v) => !v)}
-                      aria-expanded={manhaAberta}
-                    >
-                      <span className="min-w-0">
-                        <span className="font-bold">
-                          🌅 Já vieram na aula da manhã ({alunosDaManha.length})
-                        </span>
-                        <span className="mt-0.5 block text-xs text-[var(--c-text-soft)]">
-                          Toque para abrir e marcar presença se algum deles voltou à tarde.
-                        </span>
-                      </span>
-                      <span aria-hidden="true" className="shrink-0 text-lg">
-                        {manhaAberta ? '▲' : '▼'}
-                      </span>
-                    </button>
-                    {manhaAberta && (
-                      <ul className="border-t border-[var(--c-border)]">
-                        {alunosDaManha.map((a) => linhaAluno(a, true))}
-                      </ul>
+                <div className="px-4 pb-4">
+                  <div className="relative">
+                    <span aria-hidden="true"
+                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-text-soft)]">
+                      🔍
+                    </span>
+                    <input
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      placeholder="Buscar aluno pelo nome…"
+                      aria-label="Buscar aluno pelo nome"
+                      className="w-full rounded-lg border border-[var(--c-border)] py-2.5 pl-9 pr-10 text-base"
+                    />
+                    {buscaAtiva && (
+                      <button
+                        onClick={() => setBusca('')}
+                        aria-label="Limpar busca"
+                        className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[var(--c-text-soft)] transition-colors hover:bg-[var(--c-primary-soft)]"
+                      >
+                        ✕
+                      </button>
                     )}
                   </div>
+                </div>
+
+                {/* Buscando: uma lista só, com todos os que casam. */}
+                {buscaAtiva ? (
+                  alunosEncontrados.length === 0 ? (
+                    <p className="border-t border-[var(--c-border)] p-4 text-sm text-[var(--c-text-soft)]">
+                      Nenhum aluno encontrado com “{busca.trim()}”. Se ele não estiver na lista
+                      do polo, use “Aluno não está na lista?” logo abaixo para sugerir o cadastro.
+                    </p>
+                  ) : (
+                    <ul className="border-t border-[var(--c-border)]">
+                      {alunosEncontrados.map((a) =>
+                        linhaAluno(a, separarManha && presentesManha.has(a.id)),
+                      )}
+                    </ul>
+                  )
+                ) : !listaAberta ? (
+                  /* Recolhida: só o resumo de quem já foi marcado. */
+                  <div className="flex flex-col gap-3 border-t border-[var(--c-border)] p-4">
+                    {presentesLista.length > 0 ? (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs font-semibold text-[var(--c-text-soft)]">
+                          Presença confirmada
+                        </span>
+                        <ul className="flex flex-wrap gap-1.5">
+                          {presentesLista.slice(0, 8).map((a) => (
+                            <li key={a.id} className="badge badge--green !text-xs">✓ {a.nome}</li>
+                          ))}
+                          {presentesLista.length > 8 && (
+                            <li className="badge !text-xs">
+                              +{presentesLista.length - 8} outro
+                              {presentesLista.length - 8 === 1 ? '' : 's'}
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-[var(--c-text-soft)]">
+                        Ninguém marcado ainda. Busque pelo nome acima ou abra a lista completa.
+                      </p>
+                    )}
+                    <button className="btn btn-ghost w-full !py-2.5"
+                            onClick={() => setListaAberta(true)}>
+                      Ver todos os {dados.alunos.length} alunos ▼
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {alunosPrincipais.length === 0 ? (
+                      <p className="border-t border-[var(--c-border)] p-4 text-sm text-[var(--c-text-soft)]">
+                        Todos os alunos do polo já vieram no turno da manhã — abra o bloco abaixo
+                        se algum deles voltou à tarde.
+                      </p>
+                    ) : (
+                      <ul className="border-t border-[var(--c-border)]">
+                        {alunosPrincipais.map((a) => linhaAluno(a))}
+                      </ul>
+                    )}
+
+                    {separarManha && (
+                      <div className="border-t border-[var(--c-border)]">
+                        <button
+                          className="flex w-full items-center justify-between gap-2 p-4 text-left"
+                          onClick={() => setManhaAberta((v) => !v)}
+                          aria-expanded={manhaAberta}
+                        >
+                          <span className="min-w-0">
+                            <span className="font-bold">
+                              🌅 Já vieram na aula da manhã ({alunosDaManha.length})
+                            </span>
+                            <span className="mt-0.5 block text-xs text-[var(--c-text-soft)]">
+                              Toque para abrir e marcar presença se algum deles voltou à tarde.
+                            </span>
+                          </span>
+                          <span aria-hidden="true" className="shrink-0 text-lg">
+                            {manhaAberta ? '▲' : '▼'}
+                          </span>
+                        </button>
+                        {manhaAberta && (
+                          <ul className="border-t border-[var(--c-border)]">
+                            {alunosDaManha.map((a) => linhaAluno(a, true))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="border-t border-[var(--c-border)] p-4">
+                      <button className="btn btn-ghost w-full !py-2.5"
+                              onClick={() => setListaAberta(false)}>
+                        Recolher lista ▲
+                      </button>
+                    </div>
+                  </>
                 )}
               </>
             )}
@@ -738,7 +841,7 @@ export default function Chamada() {
 
       <Modal
         open={consultaAluno !== null}
-        title="Consultar responsáveis"
+        title="Consultar responsável"
         onClose={() => setConsultaAluno(null)}
         footer={
           <>
@@ -746,15 +849,20 @@ export default function Chamada() {
               Cancelar
             </button>
             <button className="btn btn-primary" onClick={confirmarConsultaResponsaveis} disabled={enviandoConsulta}>
-              {enviandoConsulta ? 'Enviando…' : '💬 Abrir WhatsApp'}
+              {enviandoConsulta
+                ? 'Enviando…'
+                : dados.contatoAntares ? '💬 Enviar e abrir WhatsApp' : 'Enviar pedido'}
             </button>
           </>
         }
       >
         <div className="flex flex-col gap-3">
           <p className="text-sm text-[var(--c-text-soft)]">
-            Isso abre o WhatsApp do administrativo pedindo o contato do responsável por{' '}
-            <strong>{consultaAluno?.nome}</strong>. O motivo abaixo vai junto na mensagem e no painel.
+            O pedido do contato do responsável por <strong>{consultaAluno?.nome}</strong> fica
+            registrado no painel do administrativo, com o motivo que você escrever abaixo.
+            {dados.contatoAntares
+              ? ' O WhatsApp do administrativo também abre com a mensagem pronta.'
+              : ''}
           </p>
           <Field label="Motivo da consulta" required>
             <textarea

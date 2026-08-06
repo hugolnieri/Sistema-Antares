@@ -42,6 +42,11 @@ export const gerarSlug = (nome: string): string =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
 
+// Texto pronto para comparação em buscas: sem acento e em minúsculas, para que
+// "Joao" encontre "João" — o professor digita com pressa, no celular.
+export const normalizarBusca = (texto: string): string =>
+  texto.toLowerCase().normalize('NFD').replace(COMBINING_MARKS, '').trim()
+
 export const linkDoPolo = (slug: string): string =>
   `${window.location.origin}/professor/polo/${slug}`
 

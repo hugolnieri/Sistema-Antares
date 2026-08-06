@@ -6,7 +6,8 @@ import { fmtDataHora, rotuloAula } from '../../lib/format'
 import { resolverUrlsFotos } from '../../lib/fotos'
 import type { HistoricoAula } from '../../lib/types'
 
-interface FotoComUrl { id: string; nome_arquivo: string; url: string | null }
+// `thumb` é a miniatura do SharePoint; a grade usa ela e o link abre a original.
+interface FotoComUrl { id: string; nome_arquivo: string; url: string | null; thumb: string | null }
 
 export default function HistoricoDetalhe() {
   const { id } = useParams()
@@ -31,7 +32,11 @@ export default function HistoricoDetalhe() {
         setRegistro(hist)
         const lista = hist.fotos_aula ?? []
         const urls = await resolverUrlsFotos(lista)
-        setFotos(lista.map((f) => ({ id: f.id, nome_arquivo: f.nome_arquivo, url: urls[f.id] ?? null })))
+        setFotos(lista.map((f) => ({
+          id: f.id,
+          nome_arquivo: f.nome_arquivo,
+          ...(urls[f.id] ?? { url: null, thumb: null }),
+        })))
         setLoading(false)
       })
   }, [id])
@@ -139,8 +144,8 @@ export default function HistoricoDetalhe() {
             {fotos.map((f) => (
               <a key={f.id} href={f.url ?? '#'} target="_blank" rel="noreferrer"
                  className="block overflow-hidden rounded-lg border border-[var(--c-border)]">
-                {f.url ? (
-                  <img src={f.url} alt={f.nome_arquivo}
+                {f.thumb ? (
+                  <img src={f.thumb} alt={f.nome_arquivo}
                        className="h-32 w-full object-cover" loading="lazy" />
                 ) : (
                   <div className="flex h-32 items-center justify-center text-xs text-[var(--c-text-soft)]">

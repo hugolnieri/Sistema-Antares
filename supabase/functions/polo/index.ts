@@ -19,6 +19,7 @@
 // definida, tem prioridade. SUPABASE_URL/SERVICE_ROLE_KEY são automáticos.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { graphDownloadUrl, graphUpload } from "../_shared/graph.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -47,65 +48,11 @@ const AULAS_POR_CICLO = 18;
 const CHAMADAS_POR_CICLO = AULAS_POR_CICLO * PERIODOS.length;
 const ehPeriodo = (v: unknown): v is Periodo => PERIODOS.includes(v as Periodo);
 
-// --- Microsoft Graph (fotos no SharePoint) ---------------------------------
-// As fotos das aulas vão para o SharePoint do colégio (biblioteca "Documentos"
-// do site Antares Fotos). O compartilhamento anônimo está DESABILITADO no
-// tenant (bom p/ privacidade), então nada fica público: a leitura acontece via
-// Edge Function "fotos", que entrega URLs temporárias só a admins autenticados.
-// Credenciais ficam na tabela `segredos` (só a service role lê). Se o Graph
-// estiver indisponível/mal configurado, o upload cai no bucket privado do
-// Supabase (fallback) — a chamada do professor nunca quebra por causa da foto.
-
-let graphTokenCache: { token: string; exp: number } | null = null;
-let graphCfgCache: { tenant: string; client: string; secret: string; driveId: string } | null = null;
-
-async function getGraphConfig() {
-  if (graphCfgCache) return graphCfgCache;
-  const { data } = await supabase
-    .from("segredos").select("chave, valor")
-    .in("chave", ["ms_tenant_id", "ms_client_id", "ms_client_secret", "ms_drive_id"]);
-  const m = new Map((data ?? []).map((r: any) => [r.chave, r.valor]));
-  const tenant = m.get("ms_tenant_id"), client = m.get("ms_client_id");
-  const secret = m.get("ms_client_secret"), driveId = m.get("ms_drive_id");
-  if (!tenant || !client || !secret || !driveId) return null; // Graph não configurado
-  graphCfgCache = { tenant, client, secret, driveId };
-  return graphCfgCache;
-}
-
-async function getGraphToken(cfg: { tenant: string; client: string; secret: string }): Promise<string | null> {
-  if (graphTokenCache && graphTokenCache.exp > Date.now() + 60_000) return graphTokenCache.token;
-  const res = await fetch(`https://login.microsoftonline.com/${cfg.tenant}/oauth2/v2.0/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: cfg.client, client_secret: cfg.secret,
-      scope: "https://graph.microsoft.com/.default", grant_type: "client_credentials",
-    }),
-  });
-  if (!res.ok) return null;
-  const j = await res.json();
-  if (!j.access_token) return null;
-  graphTokenCache = { token: j.access_token, exp: Date.now() + (j.expires_in ?? 3600) * 1000 };
-  return j.access_token;
-}
-
-// Sobe UMA foto ao SharePoint. Retorna o id do item (drive item) ou null se
-// o Graph não estiver disponível — nesse caso o chamador usa o bucket.
-async function graphUploadFoto(path: string, foto: File): Promise<string | null> {
-  const cfg = await getGraphConfig();
-  if (!cfg) return null;
-  const token = await getGraphToken(cfg);
-  if (!token) return null;
-  const url = `https://graph.microsoft.com/v1.0/drives/${cfg.driveId}/root:/${path}:/content`;
-  const res = await fetch(url, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": foto.type || "application/octet-stream" },
-    body: await foto.arrayBuffer(),
-  });
-  if (!res.ok) return null;
-  const item = await res.json();
-  return item?.id ?? null;
-}
+// Fotos e materiais ficam no SharePoint do colégio (ver ../_shared/graph.ts).
+// O compartilhamento anônimo está DESABILITADO no tenant, então nada é público:
+// a leitura sempre passa por uma URL temporária emitida sob demanda. Se o Graph
+// estiver indisponível, o upload cai no bucket privado do Supabase (fallback) —
+// a chamada do professor nunca quebra por causa da foto.
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -320,13 +267,17 @@ async function acaoDados(token: string) {
     observacoes: a.observacoes,
   }));
 
-  // URLs assinadas dos PDFs (válidas por 12h, mesmo TTL da sessão)
+  // URL temporária de cada PDF: SharePoint ("sp:<itemId>", ~1h) ou, nos casos
+  // que caíram no fallback, URL assinada do bucket (12h, o TTL da sessão).
   const materiais = await Promise.all(
     (materiaisRes.data ?? []).map(async (m: any) => {
+      const path = String(m.arquivo_path ?? "");
       let url: string | null = null;
-      if (m.arquivo_path) {
+      if (path.startsWith("sp:")) {
+        url = await graphDownloadUrl(path.slice(3));
+      } else if (path) {
         const { data: signed } = await supabase.storage
-          .from("materiais").createSignedUrl(m.arquivo_path, TOKEN_TTL_MS / 1000);
+          .from("materiais").createSignedUrl(path, TOKEN_TTL_MS / 1000);
         url = signed?.signedUrl ?? null;
       }
       return { numero_aula: m.numero_aula, titulo: m.titulo, descricao: m.descricao, url };
@@ -490,7 +441,7 @@ async function uploadFotos(poloId: string, historicoId: string, fotos: File[]): 
     // 1) Tenta o SharePoint (Microsoft Graph)
     let arquivoPath: string | null = null;
     try {
-      const itemId = await graphUploadFoto(path, foto);
+      const itemId = await graphUpload(path, foto);
       if (itemId) arquivoPath = `sp:${itemId}`;
     } catch (_e) { /* cai no fallback abaixo */ }
 

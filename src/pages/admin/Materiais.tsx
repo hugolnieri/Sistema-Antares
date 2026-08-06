@@ -79,12 +79,24 @@ export default function Materiais() {
     let arquivoPath = existente?.arquivo_path ?? null
 
     if (arquivo) {
-      const path = `aula-${String(numeroAula).padStart(2, '0')}.pdf`
-      const { error: upErr } = await supabase.storage
-        .from('materiais')
-        .upload(path, arquivo, { contentType: 'application/pdf', upsert: true })
-      if (upErr) { setSalvando(false); toast.error('Erro ao enviar o PDF.'); return }
-      arquivoPath = path
+      // O PDF vai para o SharePoint (Edge Function "fotos"), não para o Supabase:
+      // as credenciais do Microsoft Graph só existem no servidor. A função cai no
+      // bucket sozinha se o SharePoint estiver fora do ar.
+      const form = new FormData()
+      form.append('action', 'uploadMaterial')
+      form.append('numeroAula', String(numeroAula))
+      form.append('arquivo', arquivo)
+      const { data, error: upErr } = await supabase.functions.invoke('fotos', { body: form })
+      const resposta = data as { arquivoPath?: string; viaSharePoint?: boolean; error?: string } | null
+      if (upErr || !resposta?.arquivoPath) {
+        setSalvando(false)
+        toast.error(resposta?.error ?? 'Erro ao enviar o PDF.')
+        return
+      }
+      if (resposta.viaSharePoint === false) {
+        toast.error('SharePoint indisponível: o PDF foi salvo no Supabase. Reenvie mais tarde.')
+      }
+      arquivoPath = resposta.arquivoPath
     }
 
     const payload = {
@@ -111,6 +123,16 @@ export default function Materiais() {
 
   const abrirPdf = async (m: Material) => {
     if (!m.arquivo_path) return
+    // "sp:<itemId>" está no SharePoint; caminho simples é fallback no bucket.
+    if (m.arquivo_path.startsWith('sp:')) {
+      const { data, error } = await supabase.functions.invoke('fotos', {
+        body: { action: 'urlMaterial', arquivoPath: m.arquivo_path },
+      })
+      const url = (data as { url?: string } | null)?.url
+      if (error || !url) { toast.error('Erro ao abrir o PDF.'); return }
+      window.open(url, '_blank')
+      return
+    }
     const { data, error } = await supabase.storage
       .from('materiais').createSignedUrl(m.arquivo_path, 3600)
     if (error || !data) { toast.error('Erro ao abrir o PDF.'); return }

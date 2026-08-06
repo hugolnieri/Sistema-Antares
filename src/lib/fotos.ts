@@ -1,11 +1,12 @@
 // Resolve as URLs exibíveis das fotos de aula, cobrindo os três casos:
 //   1. url_externa preenchida  -> uso direto (modo demonstração usa data URLs)
-//   2. arquivo_path "sp:<id>"  -> foto no SharePoint: pede uma URL temporária
-//                                 à Edge Function "fotos" (só admin autorizado)
-//   3. arquivo_path = caminho  -> foto no bucket privado: URL assinada
+//   2. arquivo_path "sp:<id>"  -> foto no SharePoint: pede à Edge Function
+//                                 "fotos" a URL temporária + a miniatura
+//   3. arquivo_path = caminho  -> fallback no bucket privado: URL assinada
 //
-// As fotos do SharePoint não são públicas (compartilhamento anônimo desligado
-// no tenant), por isso a URL vem da função e expira em ~1h.
+// `thumb` é a versão reduzida servida pelo próprio SharePoint. Usar a miniatura
+// nas grades (galeria, histórico) evita baixar o original de vários MB só para
+// preencher uma célula de 180px. Onde não existe miniatura, cai para a original.
 import { supabase } from './supabase'
 
 export interface FotoRef {
@@ -14,10 +15,15 @@ export interface FotoRef {
   url_externa: string | null
 }
 
+export interface FotoUrls {
+  url: string | null
+  thumb: string | null
+}
+
 export async function resolverUrlsFotos(
   fotos: FotoRef[],
-): Promise<Record<string, string | null>> {
-  const urls: Record<string, string | null> = {}
+): Promise<Record<string, FotoUrls>> {
+  const urls: Record<string, FotoUrls> = {}
 
   // 1) SharePoint: resolvidas em lote pela Edge Function "fotos".
   const idsSharePoint = fotos
@@ -28,20 +34,38 @@ export async function resolverUrlsFotos(
       body: { action: 'urls', fotoIds: idsSharePoint },
     })
     const mapa = (!error && (data as any)?.urls) || {}
-    for (const id of idsSharePoint) urls[id] = mapa[id] ?? null
+    for (const id of idsSharePoint) {
+      urls[id] = mapa[id] ?? { url: null, thumb: null }
+    }
   }
 
-  // 2) url_externa direta e 3) bucket privado (URL assinada).
-  await Promise.all(
-    fotos.map(async (f) => {
-      if (f.id in urls) return // já resolvida (SharePoint)
-      if (f.url_externa) { urls[f.id] = f.url_externa; return }
-      if (!f.arquivo_path || f.arquivo_path.startsWith('sp:')) { urls[f.id] = null; return }
-      const { data } = await supabase.storage
-        .from('fotos-aulas').createSignedUrl(f.arquivo_path, 3600)
-      urls[f.id] = data?.signedUrl ?? null
-    }),
+  // 2) url_externa direta (demonstração).
+  const restantes = fotos.filter((f) => !(f.id in urls))
+  for (const f of restantes) {
+    if (f.url_externa) urls[f.id] = { url: f.url_externa, thumb: f.url_externa }
+  }
+
+  // 3) Fallback no bucket: uma única chamada em lote para todos os caminhos.
+  const noBucket = restantes.filter(
+    (f) => !f.url_externa && f.arquivo_path && !f.arquivo_path.startsWith('sp:'),
   )
+  if (noBucket.length) {
+    const { data } = await supabase.storage
+      .from('fotos-aulas')
+      .createSignedUrls(noBucket.map((f) => f.arquivo_path as string), 3600)
+    const porCaminho = new Map(
+      (data ?? []).map((d: any) => [d.path as string, d.signedUrl as string | null]),
+    )
+    for (const f of noBucket) {
+      const assinada = porCaminho.get(f.arquivo_path as string) ?? null
+      urls[f.id] = { url: assinada, thumb: assinada }
+    }
+  }
+
+  // Qualquer foto sem arquivo algum.
+  for (const f of fotos) {
+    if (!(f.id in urls)) urls[f.id] = { url: null, thumb: null }
+  }
 
   return urls
 }

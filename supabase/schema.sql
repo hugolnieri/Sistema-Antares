@@ -271,6 +271,9 @@ create index if not exists idx_presencas_hist     on presencas(historico_id);
 create index if not exists idx_presencas_aluno    on presencas(aluno_id);
 create index if not exists idx_fotos_hist         on fotos_aula(historico_id);
 create index if not exists idx_cronograma_data    on cronograma(data);
+-- A PK de aluno_responsaveis é (aluno_id, responsavel_id), então buscas por
+-- responsavel_id (tela Responsáveis, exclusão de aluno) varriam a tabela.
+create index if not exists idx_aluno_resp_resp    on aluno_responsaveis(responsavel_id);
 
 -- ------------------------------------------------------------
 -- SEGURANÇA (allowlist): só entra quem for o admin master ou estiver em

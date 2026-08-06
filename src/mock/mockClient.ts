@@ -409,6 +409,16 @@ const storage = {
         const url = arquivos.get(`${bucket}/${path}`) ?? pdfDemoUrl(path)
         return { data: { signedUrl: url }, error: null }
       },
+      async createSignedUrls(paths: string[], _ttl: number) {
+        await sleep(80)
+        return {
+          data: paths.map((path) => ({
+            path,
+            signedUrl: arquivos.get(`${bucket}/${path}`) ?? pdfDemoUrl(path),
+          })),
+          error: null,
+        }
+      },
     }
   },
 }
@@ -476,11 +486,30 @@ async function rpc(nome: string, params: any) {
 /* ---------------- Edge Functions ---------------- */
 
 // Na demonstração as fotos usam url_externa (data URLs), então nenhuma passa
-// pela função "fotos". Mantemos a interface para o front não quebrar.
+// pela resolução de URLs da função "fotos". O upload de material é atendido
+// aqui para espelhar o contrato real: guarda o arquivo e devolve o caminho.
+// Não há SharePoint na demonstração, então o caminho é sempre o do bucket.
 const functions = {
-  async invoke(nome: string, _opts?: { body?: any }) {
+  async invoke(nome: string, opts?: { body?: any }) {
     await sleep(100)
-    if (nome === 'fotos') return { data: { urls: {} }, error: null }
+    if (nome === 'fotos') {
+      const body = opts?.body
+      if (body instanceof FormData) {
+        if (String(body.get('action')) === 'uploadMaterial') {
+          const arquivo = body.get('arquivo')
+          const numeroAula = Number(body.get('numeroAula'))
+          if (!(arquivo instanceof File)) {
+            return { data: { error: 'Nenhum arquivo enviado' }, error: null }
+          }
+          const path = `aula-${String(numeroAula).padStart(2, '0')}.pdf`
+          await storage.from('materiais').upload(path, arquivo)
+          return { data: { arquivoPath: path, viaSharePoint: true }, error: null }
+        }
+        return { data: null, error: { message: 'Ação desconhecida' } }
+      }
+      if (body?.action === 'urlMaterial') return { data: { url: null }, error: null }
+      return { data: { urls: {} }, error: null }
+    }
     if (nome === 'admin-usuarios') return { data: { ok: true }, error: null }
     return { data: null, error: { message: `Função desconhecida: ${nome}` } }
   },

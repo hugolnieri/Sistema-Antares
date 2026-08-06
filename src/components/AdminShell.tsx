@@ -113,7 +113,13 @@ export function AdminShell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
+  // As notificações são as mesmas em qualquer tela, mas o efeito reage à troca
+  // de rota — sem isto, cada clique no menu refazia estas quatro consultas.
+  const ultimaBuscaNotifs = useRef(0)
+
   useEffect(() => {
+    if (Date.now() - ultimaBuscaNotifs.current < 60_000) return
+    ultimaBuscaNotifs.current = Date.now()
     const hoje = new Date().toLocaleDateString('en-CA')
     const em3 = new Date(Date.now() + 3 * 86400000).toLocaleDateString('en-CA')
     const em30 = new Date(Date.now() + 30 * 86400000).toLocaleDateString('en-CA')

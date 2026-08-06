@@ -61,27 +61,41 @@ export default function Alunos() {
   const [importLinhas, setImportLinhas] = useState<LinhaImportPreview[]>([])
   const [importando, setImportando] = useState(false)
 
+  // As quatro consultas da tela são recarregadas separadamente: depois de uma
+  // mutação quase sempre só uma delas mudou, e a de alunos é a mais pesada
+  // (traz responsáveis aninhados). Recarregar as quatro a cada salvamento era
+  // tráfego puro.
+  const carregarAlunos = useCallback(async () => {
+    const { data, error } = await supabase.from('alunos')
+      .select('*, polos(nome), aluno_responsaveis(responsavel_id, parentesco, responsaveis(id, nome, telefone))')
+      .order('nome')
+    if (error) setErro('Não foi possível carregar os alunos.')
+    else setAlunos((data ?? []) as unknown as Aluno[])
+  }, [])
+
+  const carregarSugestoes = useCallback(async () => {
+    const { data } = await supabase.from('alunos_sugeridos')
+      .select('*, polos(nome)')
+      .eq('status', 'pendente')
+      .order('created_at', { ascending: false })
+    setSugestoes((data ?? []) as unknown as AlunoSugerido[])
+  }, [])
+
+  const carregarResponsaveis = useCallback(async () => {
+    const { data } = await supabase.from('responsaveis').select('id, nome').order('nome')
+    setResponsaveis((data ?? []) as Pick<Responsavel, 'id' | 'nome'>[])
+  }, [])
+
   const carregar = useCallback(async () => {
     setLoading(true)
     setErro(null)
-    const [alunosRes, polosRes, respRes, sugRes] = await Promise.all([
-      supabase.from('alunos')
-        .select('*, polos(nome), aluno_responsaveis(responsavel_id, parentesco, responsaveis(id, nome, telefone))')
-        .order('nome'),
-      supabase.from('polos').select('id, nome').order('nome'),
-      supabase.from('responsaveis').select('id, nome').order('nome'),
-      supabase.from('alunos_sugeridos')
-        .select('*, polos(nome)')
-        .eq('status', 'pendente')
-        .order('created_at', { ascending: false }),
+    const polosPromise = supabase.from('polos').select('id, nome').order('nome')
+    const [polosRes] = await Promise.all([
+      polosPromise, carregarAlunos(), carregarResponsaveis(), carregarSugestoes(),
     ])
-    if (alunosRes.error) setErro('Não foi possível carregar os alunos.')
-    else setAlunos((alunosRes.data ?? []) as unknown as Aluno[])
     setPolos((polosRes.data ?? []) as Pick<Polo, 'id' | 'nome'>[])
-    setResponsaveis((respRes.data ?? []) as Pick<Responsavel, 'id' | 'nome'>[])
-    setSugestoes((sugRes.data ?? []) as unknown as AlunoSugerido[])
     setLoading(false)
-  }, [])
+  }, [carregarAlunos, carregarResponsaveis, carregarSugestoes])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -143,7 +157,7 @@ export default function Alunos() {
       if (error) {
         setSalvando(false)
         toast.error('Aluno salvo, mas houve erro ao vincular responsáveis.')
-        carregar()
+        carregarAlunos()
         return
       }
     }
@@ -154,7 +168,7 @@ export default function Alunos() {
     })
     toast.success(editando ? 'Aluno atualizado.' : 'Aluno cadastrado.')
     setDrawerAberto(false)
-    carregar()
+    carregarAlunos()
   }
 
   const alternarStatus = async () => {
@@ -171,7 +185,7 @@ export default function Alunos() {
     })
     toast.success(novoStatus === 'inativo' ? 'Aluno inativado.' : 'Aluno reativado.')
     setAlunoInativar(null)
-    carregar()
+    carregarAlunos()
   }
 
   // Exclusão definitiva. As presenças são preservadas (o histórico mantém o
@@ -180,17 +194,21 @@ export default function Alunos() {
     if (!alunoExcluir) return
     setSalvando(true)
     let respExcluidos = 0
-    if (excluirResp) {
-      const respIds = (alunoExcluir.aluno_responsaveis ?? []).map((ar) => ar.responsavel_id)
-      for (const rid of respIds) {
-        const { data: outros } = await supabase
-          .from('aluno_responsaveis').select('aluno_id').eq('responsavel_id', rid)
-        // Só exclui o responsável se ele não estiver vinculado a outro aluno.
-        const soDesteAluno = (outros ?? []).every((o: any) => o.aluno_id === alunoExcluir.id)
-        if (soDesteAluno) {
-          const { error } = await supabase.from('responsaveis').delete().eq('id', rid)
-          if (!error) respExcluidos++
-        }
+    const respIds = (alunoExcluir.aluno_responsaveis ?? []).map((ar) => ar.responsavel_id)
+    if (excluirResp && respIds.length) {
+      // Todos os vínculos desses responsáveis de uma vez, em vez de uma consulta
+      // por responsável.
+      const { data: vinculos } = await supabase
+        .from('aluno_responsaveis').select('aluno_id, responsavel_id').in('responsavel_id', respIds)
+      // Só exclui o responsável se ele não estiver vinculado a outro aluno.
+      const exclusivos = respIds.filter((rid) =>
+        (vinculos ?? [])
+          .filter((v: any) => v.responsavel_id === rid)
+          .every((v: any) => v.aluno_id === alunoExcluir.id),
+      )
+      if (exclusivos.length) {
+        const { error } = await supabase.from('responsaveis').delete().in('id', exclusivos)
+        if (!error) respExcluidos = exclusivos.length
       }
     }
     const { error } = await supabase.from('alunos').delete().eq('id', alunoExcluir.id)
@@ -204,7 +222,8 @@ export default function Alunos() {
     toast.success('Aluno excluído. O histórico de presenças foi preservado.')
     setAlunoExcluir(null)
     setDrawerAberto(false)
-    carregar()
+    carregarAlunos()
+    if (respExcluidos) carregarResponsaveis()
   }
 
   // Sugestões vindas da chamada do professor: aprovar cria o aluno no polo.
@@ -224,7 +243,8 @@ export default function Alunos() {
       descricao: `Aprovou a sugestão e cadastrou o aluno "${s.nome}" no polo ${s.polos?.nome ?? ''}.`,
     })
     toast.success(`Aluno "${s.nome}" cadastrado no polo ${s.polos?.nome ?? ''}.`)
-    carregar()
+    carregarAlunos()
+    carregarSugestoes()
   }
 
   const recusarSugestao = async (s: AlunoSugerido) => {
@@ -238,7 +258,7 @@ export default function Alunos() {
       descricao: `Recusou a sugestão de cadastro do aluno "${s.nome}".`,
     })
     toast.success('Sugestão recusada.')
-    carregar()
+    carregarSugestoes()
   }
 
   const abrirHistorico = async (a: Aluno) => {
@@ -351,7 +371,8 @@ export default function Alunos() {
       descricao: `Importou ${n} aluno${n === 1 ? '' : 's'} por planilha.`,
     })
     toast.success(`${n} aluno${n === 1 ? '' : 's'} importado${n === 1 ? '' : 's'} com sucesso.`)
-    carregar()
+    carregarAlunos()
+    carregarResponsaveis() // a planilha pode ter criado responsáveis novos
   }
 
   const linhas = filtroPolo ? alunos.filter((a) => a.polo_id === filtroPolo) : alunos

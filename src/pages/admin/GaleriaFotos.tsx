@@ -3,8 +3,12 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Field, Modal, EmptyState } from '../../components/ui'
 import { fmtData, fmtDataHora, rotuloAula } from '../../lib/format'
-import { resolverUrlsFotos } from '../../lib/fotos'
+import { resolverUrlsFotos, type FotoUrls } from '../../lib/fotos'
 import type { Polo } from '../../lib/types'
+
+// Quantas fotos por página. A grade carrega sob demanda em vez de puxar tudo:
+// cada foto custa uma URL temporária, e a miniatura só é útil se aparecer.
+const POR_PAGINA = 60
 
 interface FotoGaleria {
   id: string
@@ -24,12 +28,15 @@ interface FotoGaleria {
   } | null
 }
 
-type FotoComUrl = FotoGaleria & { url: string | null }
+type FotoComUrl = FotoGaleria & FotoUrls
 
 export default function GaleriaFotos() {
   const [fotos, setFotos] = useState<FotoComUrl[]>([])
   const [polos, setPolos] = useState<Pick<Polo, 'id' | 'nome'>[]>([])
+  const [ciclos, setCiclos] = useState<number[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [carregandoMais, setCarregandoMais] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -39,45 +46,83 @@ export default function GaleriaFotos() {
   const [filtroData, setFiltroData] = useState('')
 
   const [fotoAberta, setFotoAberta] = useState<FotoComUrl | null>(null)
+  const [recarga, setRecarga] = useState(0)
 
-  const carregar = useCallback(async () => {
-    setLoading(true)
-    setErro(null)
-    const [fotosRes, polosRes] = await Promise.all([
-      supabase.from('fotos_aula')
-        .select('id, arquivo_path, url_externa, nome_arquivo, created_at, polo_id, historico_id, historico_aulas(numero_aula, ciclo, periodo, data_hora, professor_nome, polos(nome))')
-        .order('created_at', { ascending: false })
-        .limit(1000),
-      supabase.from('polos').select('id, nome').order('nome'),
-    ])
-    if (fotosRes.error) {
-      setErro('Não foi possível carregar as fotos.')
-      setLoading(false)
-      return
-    }
-    setPolos((polosRes.data ?? []) as Pick<Polo, 'id' | 'nome'>[])
-    const base = (fotosRes.data ?? []) as unknown as FotoGaleria[]
-    // Resolve a URL de cada foto: demo (url_externa), SharePoint (sp:) ou bucket.
-    const urls = await resolverUrlsFotos(base)
-    setFotos(base.map((f) => ({ ...f, url: urls[f.id] ?? null })))
-    setLoading(false)
+  // Listas dos filtros — carregadas uma vez, independentes da paginação.
+  useEffect(() => {
+    ;(async () => {
+      const [polosRes, ciclosRes] = await Promise.all([
+        supabase.from('polos').select('id, nome').order('nome'),
+        supabase.from('historico_aulas').select('ciclo').order('ciclo', { ascending: false }).limit(500),
+      ])
+      setPolos((polosRes.data ?? []) as Pick<Polo, 'id' | 'nome'>[])
+      setCiclos(
+        Array.from(new Set((ciclosRes.data ?? []).map((h: any) => h.ciclo as number)))
+          .sort((a, b) => b - a),
+      )
+    })()
   }, [])
 
-  useEffect(() => { carregar() }, [carregar])
+  // Uma página de fotos. Os filtros vão para o banco (antes eram aplicados em
+  // memória sobre as 1000 primeiras), então a paginação é consistente.
+  const buscarPagina = useCallback(async (offset: number) => {
+    let q = supabase
+      .from('fotos_aula')
+      .select(
+        'id, arquivo_path, url_externa, nome_arquivo, created_at, polo_id, historico_id, historico_aulas!inner(numero_aula, ciclo, periodo, data_hora, professor_nome, polos(nome))',
+        { count: 'exact' },
+      )
+    if (filtroPolo) q = q.eq('polo_id', filtroPolo)
+    if (filtroAula) q = q.eq('historico_aulas.numero_aula', Number(filtroAula))
+    if (filtroCiclo) q = q.eq('historico_aulas.ciclo', Number(filtroCiclo))
+    if (filtroData) {
+      const fim = new Date(`${filtroData}T00:00:00`)
+      fim.setDate(fim.getDate() + 1)
+      q = q
+        .gte('historico_aulas.data_hora', `${filtroData}T00:00:00`)
+        .lt('historico_aulas.data_hora', fim.toISOString())
+    }
 
-  // Ciclos existentes (para o filtro), do maior para o menor.
-  const ciclos = Array.from(
-    new Set(fotos.map((f) => f.historico_aulas?.ciclo).filter((c): c is number => c != null)),
-  ).sort((a, b) => b - a)
+    const { data, error, count } = await q
+      .order('created_at', { ascending: false })
+      .range(offset, offset + POR_PAGINA - 1)
+    if (error) throw error
 
-  const filtradas = fotos.filter((f) => {
-    const h = f.historico_aulas
-    if (filtroPolo && f.polo_id !== filtroPolo) return false
-    if (filtroAula && h?.numero_aula !== Number(filtroAula)) return false
-    if (filtroCiclo && h?.ciclo !== Number(filtroCiclo)) return false
-    if (filtroData && !(h?.data_hora ?? '').startsWith(filtroData)) return false
-    return true
-  })
+    const base = (data ?? []) as unknown as FotoGaleria[]
+    const urls = await resolverUrlsFotos(base)
+    return {
+      itens: base.map((f) => ({ ...f, ...(urls[f.id] ?? { url: null, thumb: null }) })),
+      total: count ?? 0,
+    }
+  }, [filtroPolo, filtroAula, filtroCiclo, filtroData])
+
+  // Recarrega do zero sempre que um filtro muda.
+  useEffect(() => {
+    let cancelado = false
+    setLoading(true)
+    setErro(null)
+    buscarPagina(0)
+      .then(({ itens, total }) => {
+        if (cancelado) return
+        setFotos(itens)
+        setTotal(total)
+      })
+      .catch(() => { if (!cancelado) setErro('Não foi possível carregar as fotos.') })
+      .finally(() => { if (!cancelado) setLoading(false) })
+    return () => { cancelado = true }
+  }, [buscarPagina, recarga])
+
+  const carregarMais = async () => {
+    setCarregandoMais(true)
+    try {
+      const { itens } = await buscarPagina(fotos.length)
+      setFotos((atuais) => [...atuais, ...itens])
+    } catch {
+      setErro('Não foi possível carregar mais fotos.')
+    } finally {
+      setCarregandoMais(false)
+    }
+  }
 
   const legenda = (f: FotoComUrl) => {
     const h = f.historico_aulas
@@ -126,7 +171,7 @@ export default function GaleriaFotos() {
           <button className="btn btn-ghost !py-2" onClick={limparFiltros}>Limpar filtros</button>
         )}
         <span className="ml-auto text-sm text-[var(--c-text-soft)]">
-          {loading ? '—' : `${filtradas.length} foto${filtradas.length === 1 ? '' : 's'}`}
+          {loading ? '—' : `${total} foto${total === 1 ? '' : 's'}`}
         </span>
       </div>
 
@@ -140,9 +185,9 @@ export default function GaleriaFotos() {
       ) : erro ? (
         <div className="card">
           <EmptyState icon="⚠️" title="Erro ao carregar" message={erro}
-                      action={<button className="btn btn-ghost" onClick={carregar}>Tentar novamente</button>} />
+                      action={<button className="btn btn-ghost" onClick={() => setRecarga((n) => n + 1)}>Tentar novamente</button>} />
         </div>
-      ) : filtradas.length === 0 ? (
+      ) : fotos.length === 0 ? (
         <div className="card">
           <EmptyState
             icon="📷"
@@ -156,33 +201,40 @@ export default function GaleriaFotos() {
           />
         </div>
       ) : (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-          {filtradas.map((f) => (
-            <button key={f.id}
-                    className="group flex flex-col overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] text-left transition-shadow hover:shadow-md"
-                    onClick={() => setFotoAberta(f)}>
-              {f.url ? (
-                <img src={f.url} alt={f.nome_arquivo} loading="lazy"
-                     className="h-40 w-full object-cover transition-transform group-hover:scale-[1.03]" />
-              ) : (
-                <div className="flex h-40 w-full items-center justify-center text-xs text-[var(--c-text-soft)]">
-                  Indisponível
+        <>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+            {fotos.map((f) => (
+              <button key={f.id}
+                      className="group flex flex-col overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] text-left transition-shadow hover:shadow-md"
+                      onClick={() => setFotoAberta(f)}>
+                {f.thumb ? (
+                  <img src={f.thumb} alt={f.nome_arquivo} loading="lazy"
+                       className="h-40 w-full object-cover transition-transform group-hover:scale-[1.03]" />
+                ) : (
+                  <div className="flex h-40 w-full items-center justify-center text-xs text-[var(--c-text-soft)]">
+                    Indisponível
+                  </div>
+                )}
+                <div className="flex flex-col gap-0.5 p-2">
+                  <span className="truncate text-xs font-semibold">
+                    {f.historico_aulas?.polos?.nome ?? '—'}
+                  </span>
+                  <span className="text-[11px] text-[var(--c-text-soft)]">
+                    {f.historico_aulas
+                      ? rotuloAula(f.historico_aulas.numero_aula, f.historico_aulas.ciclo, f.historico_aulas.periodo)
+                      : '—'}
+                    {f.historico_aulas?.data_hora ? ` · ${fmtData(f.historico_aulas.data_hora)}` : ''}
+                  </span>
                 </div>
-              )}
-              <div className="flex flex-col gap-0.5 p-2">
-                <span className="truncate text-xs font-semibold">
-                  {f.historico_aulas?.polos?.nome ?? '—'}
-                </span>
-                <span className="text-[11px] text-[var(--c-text-soft)]">
-                  {f.historico_aulas
-                    ? rotuloAula(f.historico_aulas.numero_aula, f.historico_aulas.ciclo, f.historico_aulas.periodo)
-                    : '—'}
-                  {f.historico_aulas?.data_hora ? ` · ${fmtData(f.historico_aulas.data_hora)}` : ''}
-                </span>
-              </div>
+              </button>
+            ))}
+          </div>
+          {fotos.length < total && (
+            <button className="btn btn-ghost self-center" onClick={carregarMais} disabled={carregandoMais}>
+              {carregandoMais ? 'Carregando…' : `Carregar mais (${total - fotos.length} restantes)`}
             </button>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {/* Lightbox */}
